@@ -1,0 +1,21 @@
+{
+  "name": "grobomo-marketplace",
+  "owner": {
+    "name": "grobomo"
+  },
+  "metadata": {
+    "description": "Claude Code skills for configuration management and productivity",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "super-manager",
+      "source": "./plugins/super-manager",
+      "description": "Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. Status dashboard, doctor diagnostics, auto-fix, and duplicate detection.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      }
+    }
+  ]
+}
