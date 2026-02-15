@@ -1,0 +1,8 @@
+{
+  "name": "v1-api",
+  "description": "Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more.",
+  "version": "1.0.0",
+  "author": {"name": "grobomo"},
+  "keywords": ["vision-one", "xdr", "trend-micro", "security", "api", "alerts", "endpoints", "threats"],
+  "skills": ["./skills/v1-api"]
+}

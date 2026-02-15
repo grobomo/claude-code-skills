@@ -4,18 +4,44 @@
     "name": "grobomo"
   },
   "metadata": {
-    "description": "Claude Code skills for configuration management and productivity",
-    "version": "0.1.0"
+    "description": "Claude Code plugins for security operations, configuration management, and developer productivity",
+    "version": "0.2.0"
   },
   "plugins": [
     {
       "name": "super-manager",
       "source": "./plugins/super-manager",
-      "description": "Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. Status dashboard, doctor diagnostics, auto-fix, and duplicate detection.",
+      "description": "Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions.",
       "version": "1.0.0",
-      "author": {
-        "name": "grobomo"
-      }
+      "author": {"name": "grobomo"}
+    },
+    {
+      "name": "v1-api",
+      "source": "./plugins/v1-api",
+      "description": "Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more.",
+      "version": "1.0.0",
+      "author": {"name": "grobomo"}
+    },
+    {
+      "name": "diff-view",
+      "source": "./plugins/diff-view",
+      "description": "Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow.",
+      "version": "1.0.0",
+      "author": {"name": "grobomo"}
+    },
+    {
+      "name": "hook-maker",
+      "source": "./plugins/hook-maker",
+      "description": "Create Claude Code hooks from templates. Generates correct hook schema for all event types.",
+      "version": "1.0.0",
+      "author": {"name": "grobomo"}
+    },
+    {
+      "name": "memo-edit",
+      "source": "./plugins/memo-edit",
+      "description": "Safely edit CLAUDE.md project memos with proper section management.",
+      "version": "1.0.0",
+      "author": {"name": "grobomo"}
     }
   ]
 }

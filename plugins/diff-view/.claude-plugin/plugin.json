@@ -1,0 +1,20 @@
+{
+  "name": "diff-view",
+  "description": "Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow. Opens in browser.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "diff",
+    "compare",
+    "merge",
+    "viewer",
+    "code-review",
+    "side-by-side",
+    "git"
+  ],
+  "skills": [
+    "./skills/diff-view"
+  ]
+}
