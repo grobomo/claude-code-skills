@@ -1,7 +1,7 @@
 {
   "name": "super-manager",
   "description": "Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. Status dashboard, doctor diagnostics, auto-fix, and duplicate detection.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "grobomo"
   },

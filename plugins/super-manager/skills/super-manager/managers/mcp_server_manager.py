@@ -1,15 +1,12 @@
 """
-mcp_server_manager.py - WRAPPER manager for MCP servers.
+mcp_server_manager.py - Config-only manager for MCP servers.
 
-Reads servers.yaml directly for listing/verification.
-Provides native start/stop via subprocess for server lifecycle.
+Reads/writes servers.yaml for configuration (add, remove, enable, disable).
+Server lifecycle (start/stop/reload) is handled by mcpm.
 """
 import sys
 import os
 import subprocess
-import signal
-import json
-import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from shared.configuration_paths import find_servers_yaml, SUPER_MANAGER_DIR
@@ -18,43 +15,6 @@ from shared.config_file_handler import read_yaml_servers
 from shared.file_operations import archive_file
 
 log = create_logger("mcp-server-manager")
-
-# PID tracking file for started servers
-_PID_FILE = os.path.join(SUPER_MANAGER_DIR, "logs", "server-pids.json")
-
-
-def _read_pids():
-    """Read server PID tracking file."""
-    if os.path.isfile(_PID_FILE):
-        try:
-            with open(_PID_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
-
-
-def _write_pids(pids):
-    """Write server PID tracking file."""
-    os.makedirs(os.path.dirname(_PID_FILE), exist_ok=True)
-    with open(_PID_FILE, "w", encoding="utf-8") as f:
-        json.dump(pids, f, indent=2)
-
-
-def _is_pid_running(pid):
-    """Check if a process with given PID is running."""
-    try:
-        if sys.platform == "win32":
-            result = subprocess.run(
-                ["tasklist", "/FI", "PID eq {}".format(pid)],
-                capture_output=True, text=True, timeout=5
-            )
-            return str(pid) in result.stdout
-        else:
-            os.kill(pid, 0)
-            return True
-    except (OSError, subprocess.TimeoutExpired):
-        return False
 
 
 def list_all():
@@ -65,14 +25,8 @@ def list_all():
         return {"items": [], "summary": "0 servers (servers.yaml not found)"}
 
     servers = read_yaml_servers(yaml_path)
-    pids = _read_pids()
     items = []
     for name, config in servers.items():
-        running = False
-        pid = pids.get(name)
-        if pid and _is_pid_running(pid):
-            running = True
-
         items.append({
             "name": name,
             "enabled": config.get("enabled", False),
@@ -80,16 +34,14 @@ def list_all():
             "command": config.get("command", config.get("url", "")),
             "auto_start": config.get("auto_start", False),
             "tags": config.get("tags", []),
-            "status": "running" if running else ("healthy" if config.get("enabled", False) else "disabled"),
-            "pid": pid if running else None,
+            "status": "enabled" if config.get("enabled", False) else "disabled",
         })
 
     enabled_count = sum(1 for i in items if i["enabled"])
-    running_count = sum(1 for i in items if i["status"] == "running")
-    log.info("LIST: {} servers ({} enabled, {} running)".format(len(items), enabled_count, running_count))
+    log.info("LIST: {} servers ({} enabled)".format(len(items), enabled_count))
     return {
         "items": items,
-        "summary": "{} servers ({} enabled, {} running)".format(len(items), enabled_count, running_count),
+        "summary": "{} servers ({} enabled)".format(len(items), enabled_count),
     }
 
 
@@ -268,132 +220,3 @@ def verify_all(name=None):
     healthy_list = [s for s in servers.keys() if not any(i.get("item") == s for i in issues)]
     log.info("VERIFY: {} servers checked, {} issues".format(len(servers), len(issues)))
     return {"healthy": healthy_list, "issues": issues}
-
-
-def start_server(name):
-    """Start a server by reading its config from servers.yaml and launching the process."""
-    yaml_path = find_servers_yaml()
-    if not yaml_path:
-        return {"success": False, "message": "servers.yaml not found"}
-
-    servers = read_yaml_servers(yaml_path)
-    if name not in servers:
-        return {"success": False, "message": "Server '{}' not found in servers.yaml".format(name)}
-
-    config = servers[name]
-    command = config.get("command", "")
-    if not command:
-        url = config.get("url", "")
-        if url:
-            return {"success": True, "message": "Server '{}' is URL-based ({}) - no process to start".format(name, url)}
-        return {"success": False, "message": "Server '{}' has no command configured".format(name)}
-
-    # Check if already running
-    pids = _read_pids()
-    existing_pid = pids.get(name)
-    if existing_pid and _is_pid_running(existing_pid):
-        return {"success": True, "message": "Server '{}' already running (PID {})".format(name, existing_pid)}
-
-    # Build command line
-    args = config.get("args", [])
-    cmd_list = [command] + args
-
-    # Build environment
-    env = os.environ.copy()
-    server_env = config.get("env", {})
-    if server_env:
-        env.update(server_env)
-
-    try:
-        log.info("START: {} -> {}".format(name, " ".join(cmd_list)))
-
-        # Start process - MCP servers use stdio protocol so stdin must stay open
-        # Use PIPE for stdin (server blocks waiting for input = stays alive)
-        # Use DEVNULL for stdout/stderr (we don't read MCP responses from CLI)
-        kwargs = {
-            "stdout": subprocess.DEVNULL,
-            "stderr": subprocess.DEVNULL,
-            "stdin": subprocess.PIPE,
-            "env": env,
-        }
-        if sys.platform == "win32":
-            kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-
-        proc = subprocess.Popen(cmd_list, **kwargs)
-
-        # Give it a moment to see if it crashes immediately
-        time.sleep(1)
-        if proc.poll() is not None:
-            return {"success": False, "message": "Server '{}' exited immediately (code {})".format(name, proc.returncode)}
-
-        # Track PID
-        pids[name] = proc.pid
-        _write_pids(pids)
-
-        log.info("START: {} running as PID {}".format(name, proc.pid))
-        return {"success": True, "message": "Started '{}' (PID {})".format(name, proc.pid)}
-
-    except FileNotFoundError:
-        return {"success": False, "message": "Command '{}' not found".format(command)}
-    except Exception as e:
-        log.error("START failed for {}: {}".format(name, e))
-        return {"success": False, "message": "Failed to start '{}': {}".format(name, e)}
-
-
-def stop_server(name):
-    """Stop a running server by PID."""
-    pids = _read_pids()
-    pid = pids.get(name)
-
-    if not pid:
-        return {"success": False, "message": "No PID tracked for '{}' - server may not have been started by super-manager".format(name)}
-
-    if not _is_pid_running(pid):
-        del pids[name]
-        _write_pids(pids)
-        return {"success": True, "message": "Server '{}' (PID {}) was already stopped".format(name, pid)}
-
-    try:
-        if sys.platform == "win32":
-            subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=10)
-        else:
-            os.kill(pid, signal.SIGTERM)
-            time.sleep(2)
-            if _is_pid_running(pid):
-                os.kill(pid, signal.SIGKILL)
-
-        del pids[name]
-        _write_pids(pids)
-        log.info("STOP: {} (PID {})".format(name, pid))
-        return {"success": True, "message": "Stopped '{}' (PID {})".format(name, pid)}
-
-    except Exception as e:
-        log.error("STOP failed for {}: {}".format(name, e))
-        return {"success": False, "message": "Failed to stop '{}': {}".format(name, e)}
-
-
-def reload_all():
-    """Reload - stop all tracked servers and restart enabled ones."""
-    pids = _read_pids()
-    stopped = []
-    started = []
-
-    # Stop all tracked
-    for name in list(pids.keys()):
-        result = stop_server(name)
-        if result.get("success"):
-            stopped.append(name)
-
-    # Start all enabled
-    yaml_path = find_servers_yaml()
-    if yaml_path:
-        servers = read_yaml_servers(yaml_path)
-        for name, config in servers.items():
-            if config.get("enabled") and config.get("auto_start") and config.get("command"):
-                result = start_server(name)
-                if result.get("success"):
-                    started.append(name)
-
-    msg = "Reload: stopped {}, started {}".format(len(stopped), len(started))
-    log.info(msg)
-    return {"success": True, "message": msg}

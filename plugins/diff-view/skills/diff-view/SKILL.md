@@ -1,6 +1,13 @@
 ---
+
 name: diff-view
 description: Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow.
+keywords:
+  - diff
+  - compare
+  - merge
+  - viewer
+
 ---
 
 # Side-by-Side Diff Viewer
@@ -18,53 +25,25 @@ User says: "/diff-view" or "show diff" or "compare files"
 
 Arguments: `<old_file> <new_file>` or just `<file>` (compares to git HEAD)
 
-## Setup
-
-The plugin includes two Python scripts in `.diff-viewer/`:
-- `generate.py` - Generates the HTML diff viewer
-- `server.py` - Local server for live navigation and saves
-
-On first use, copy `.diff-viewer/` from the plugin's skill directory to the project root:
-
-```bash
-# Find the plugin skill directory and copy runtime files
-SKILL_DIR="$(dirname "$(find ~/.claude/skills -path '*/diff-view/.diff-viewer/generate.py' 2>/dev/null | head -1)")"
-[ -z "$SKILL_DIR" ] && SKILL_DIR="$(dirname "$(find . -path '*/.diff-viewer/generate.py' 2>/dev/null | head -1)")"
-if [ -d "$SKILL_DIR" ] && [ ! -d ".diff-viewer" ]; then
-  cp -r "$SKILL_DIR" .diff-viewer
-fi
-```
-
 ## Workflow (Claude executes these automatically)
 
-### Step 1: Ensure .diff-viewer exists in project root
-
-If `.diff-viewer/generate.py` does not exist in the project root, copy it from the plugin skill directory (see Setup above).
-
-### Step 2: Start the server in background
+### Step 1: Start the server in background
 
 ```bash
 cd "<project_root>" && python .diff-viewer/server.py "$(pwd)" &
 # Run with: run_in_background: true
 ```
 
-### Step 3: Wait for token file, then generate HTML
+### Step 2: Wait for token file, then generate HTML
 
 ```bash
 sleep 1 && python .diff-viewer/generate.py <old_file> <new_file>
 ```
 
-### Step 4: Open in browser
+### Step 3: Open in Chrome
 
 ```bash
-# macOS
-open .diff-viewer/diff_viewer.html
-
-# Linux
-xdg-open .diff-viewer/diff_viewer.html
-
-# Windows
-start "" "chrome" "<full_path>\.diff-viewer\diff_viewer.html"
+start "" "chrome" "<full_windows_path>\.diff-viewer\diff_viewer.html"
 ```
 
 The server provides:

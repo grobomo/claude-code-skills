@@ -54,6 +54,8 @@ tool-reminder.js (UserPromptSubmit hook) re-injects CLAUDE.md content on EVERY p
 ### The "Always Document WHY" Rule
 Every instruction file and every rule should explain WHY it exists, not just WHAT to do. When Claude understands the reason behind a rule, it follows the spirit even in edge cases the rule doesn't explicitly cover. When creating or editing instruction files, always include a brief WHY explanation.
 
+**WHY we require WHY:** Rules without reasoning become cargo cult - followed literally but broken in spirit. A rule like "never use temp directories" gets ignored because Claude doesn't know the reason (OneDrive sync race conditions). But "never use temp directories - OneDrive sync causes race conditions, use project `.tmp/` instead" gets followed AND extended to similar situations. The WHY turns a rigid rule into transferable understanding. Without it, every edge case needs its own rule. With it, one rule covers a whole class of situations.
+
 ## Commands
 
 ```bash

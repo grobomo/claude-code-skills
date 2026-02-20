@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Side-by-Side Diff</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Consolas,monospace;font-size:16px;background:#1e1e1e;color:#d4d4d4;padding:10px}
+h1{color:#dcdcaa;text-align:center;margin:10px 0}
+
+.file-header{background:#0e639c;color:#fff;padding:8px 15px;font-weight:700;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:20}
+.buttons{display:flex;gap:8px;align-items:center}
+.buttons button{padding:6px 16px;border:1px solid #5a5a5a;border-radius:3px;cursor:pointer;font-size:14px}
+.save-btn{background:#2d7d2d;color:#fff}
+.save-btn:hover{background:#3a9a3a}
+.cancel-btn{background:#3c3c3c;color:#d4d4d4}
+.cancel-btn:hover{background:#4a4a4a}
+.status{font-size:12px;color:#89d185}
+
+.diff-wrapper{position:relative;border:1px solid #3c3c3c;border-top:none}
+.diff-container{height:600px;overflow:auto;display:flex}
+.left-panel{width:50%;overflow:hidden}
+.right-panel{flex:1;overflow:hidden}
+
+.resizer{position:absolute;top:0;bottom:0;width:12px;background:#555;cursor:ew-resize;z-index:10;left:50%;margin-left:-6px}
+.resizer:hover{background:#0e639c}
+
+.panel-header{background:#2d2d2d;padding:5px 10px;font-weight:700;text-align:center;position:sticky;top:0}
+.left-panel .panel-header{color:#f48771}
+.right-panel .panel-header{color:#89d185}
+
+.line-row{display:flex;min-height:22px}
+.line-num{min-width:40px;padding:2px 6px;text-align:right;color:#606060;background:#1a1a1a;border-right:1px solid #3c3c3c;flex-shrink:0;line-height:22px}
+.line-content{flex:1;padding:2px 8px;white-space:pre-wrap;word-wrap:break-word;line-height:22px}
+.line-input{flex:1;padding:2px 8px;background:transparent;color:#d4d4d4;border:none;font:inherit;line-height:22px;resize:none;outline:none;overflow:hidden;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>Side-by-Side Diff</h1>
+
+<div class="file-header">
+<span id="fileName">README.md</span>
+<div class="buttons">
+<span class="status" id="status"></span>
+<button class="save-btn" onclick="saveFile()">Save</button>
+<button class="cancel-btn" onclick="window.close()">Cancel</button>
+</div>
+</div>
+
+<div class="diff-wrapper">
+<div class="resizer" id="resizer"></div>
+<div class="diff-container" id="container">
+<div class="left-panel" id="leftPanel">
+<div class="panel-header">OLD</div>
+<div id="leftLines"></div>
+</div>
+<div class="right-panel" id="rightPanel">
+<div class="panel-header">NEW (editable)</div>
+<div id="rightLines"></div>
+</div>
+</div>
+</div>
+
+<script>
+var fileName = 'README.md';
+var workingDir = 'C:/Users/joelg/Downloads/';
+var lines = [
+    '# MCP Manager',
+    '',
+    '**Centralized control for MCP servers in Claude Code.**',
+    '',
+    'This is a test line that should wrap when the panel gets smaller.',
+    '',
+    '## Quick Start',
+    '',
+    'Test the diff viewer with wrapping and editing.'
+];
+
+// Build rows
+function buildRows() {
+    var leftHtml = '';
+    var rightHtml = '';
+    lines.forEach(function(line, i) {
+        var num = i + 1;
+        var escaped = line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+        leftHtml += '<div class="line-row" id="left-row-'+num+'"><div class="line-num">'+num+'</div><div class="line-content">'+escaped+'</div></div>';
+        rightHtml += '<div class="line-row" id="right-row-'+num+'"><div class="line-num">'+num+'</div><textarea class="line-input" id="edit-'+num+'" oninput="autoGrow(this); syncHeights();">'+escaped+'</textarea></div>';
+    });
+    document.getElementById('leftLines').innerHTML = leftHtml;
+    document.getElementById('rightLines').innerHTML = rightHtml;
+}
+
+function autoGrow(el) {
+    el.style.height = '22px';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+function syncHeights() {
+    for (var i = 1; i <= lines.length; i++) {
+        var leftRow = document.getElementById('left-row-' + i);
+        var rightRow = document.getElementById('right-row-' + i);
+        if (!leftRow || !rightRow) continue;
+        leftRow.style.minHeight = '';
+        rightRow.style.minHeight = '';
+        var leftH = leftRow.offsetHeight;
+        var rightH = rightRow.offsetHeight;
+        var maxH = Math.max(leftH, rightH);
+        leftRow.style.minHeight = maxH + 'px';
+        rightRow.style.minHeight = maxH + 'px';
+    }
+}
+
+// Resizer
+var isResizing = false;
+var leftPanel = document.getElementById('leftPanel');
+var resizer = document.getElementById('resizer');
+var container = document.getElementById('container');
+
+resizer.addEventListener('mousedown', function(e) {
+    isResizing = true;
+    document.body.style.cursor = 'ew-resize';
+    document.body.style.userSelect = 'none';
+});
+
+document.addEventListener('mousemove', function(e) {
+    if (!isResizing) return;
+    var rect = container.getBoundingClientRect();
+    var x = e.clientX - rect.left;
+    var percent = (x / rect.width) * 100;
+    if (percent > 15 && percent < 85) {
+        leftPanel.style.width = percent + '%';
+        resizer.style.left = percent + '%';
+        syncHeights();
+    }
+});
+
+document.addEventListener('mouseup', function() {
+    if (isResizing) {
+        isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        syncHeights();
+    }
+});
+
+// Sync scroll
+var lp = document.getElementById('leftPanel');
+var rp = document.getElementById('rightPanel');
+lp.addEventListener('scroll', function() { rp.scrollTop = lp.scrollTop; });
+rp.addEventListener('scroll', function() { lp.scrollTop = rp.scrollTop; });
+
+// Save - downloads to monitored folder
+async function saveFile() {
+    var content = [];
+    for (var i = 1; i <= lines.length; i++) {
+        var ta = document.getElementById('edit-' + i);
+        if (ta) content.push(ta.value);
+    }
+    var text = content.join('\n');
+    var timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    var newName = fileName.replace(/(\.[^.]+)$/, '_edited_' + timestamp + '$1');
+    
+    // Download to Downloads folder (Claude monitors this)
+    var blob = new Blob([text], {type: 'text/plain'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = newName;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    document.getElementById('status').textContent = 'Saved: ' + newName;
+}
+
+// Init
+buildRows();
+window.onload = function() {
+    document.querySelectorAll('.line-input').forEach(function(ta) {
+        autoGrow(ta);
+    });
+    syncHeights();
+    window.addEventListener('resize', syncHeights);
+};
+</script>
+</body></html>

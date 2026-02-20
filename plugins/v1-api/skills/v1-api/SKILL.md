@@ -1,6 +1,22 @@
 ---
 name: v1-api
 description: Query Vision One APIs directly. Use when user asks about V1, Vision One, alerts, endpoints, threats, blocklist, or security data.
+keywords:
+  - v1
+  - vision
+  - workbench
+  - alerts
+  - oat
+  - observed
+  - attack
+  - techniques
+  - endpoints
+  - quarantine
+  - email
+  - blocklist
+  - detection
+  - network
+  - suspicious
 ---
 
 # Vision One API Skill
@@ -60,6 +76,19 @@ v1-api/
     └── ...
 ```
 
+## Keyword to Operation Map
+
+| User Says | Operation | Notes |
+|-----------|-----------|-------|
+| workbench, alerts, workbench alerts | `list_alerts` | Workbench = Alerts in V1 |
+| OAT, observed attack techniques, OAT detections | `list_oat` | |
+| email, quarantine, quarantined emails | `search_email_logs` | Filter by scanType or action |
+| endpoint logs, process, powershell | `search_endpoint_logs` | |
+| network logs, network detection | `search_network_logs` | |
+| blocklist, block IP, block domain | `add_to_blocklist` | |
+| suspicious object, suspicious objects | `list_suspicious_objects` | |
+| endpoints, agents, endpoint list | `list_endpoints` | |
+
 ## Common Operations
 
 | Task | Operation | Key Params |
@@ -81,3 +110,8 @@ For full access, create an API key with:
 - Response Management (View, Filter, Run response actions)
 
 For full API list, read `api_reference.md`.
+
+## Tips
+
+- **Auto-pagination:** All list/search operations automatically follow `nextLink` and poll `progressRate` to return complete results in a single call. No need for manual page-by-page fetching.
+- **Product questions?** Use the **TrendGPT MCP** (`trendgpt`) for V1 product documentation, feature explanations, how-to guides, and best practices. v1-api is for querying live data; TrendGPT is for understanding the product.

@@ -18,11 +18,13 @@ LOGS_DIR = os.path.join(SUPER_MANAGER_DIR, "logs")
 REPORTS_DIR = os.path.join(SUPER_MANAGER_DIR, "reports")
 ARCHIVE_DIR = os.path.join(SUPER_MANAGER_DIR, "archive")
 TESTS_DIR = os.path.join(SUPER_MANAGER_DIR, "tests")
+CREDENTIALS_DIR = os.path.join(SUPER_MANAGER_DIR, "credentials")
 
 # Registry files (inside super-manager)
 HOOK_REGISTRY = os.path.join(REGISTRIES_DIR, "hook-registry.json")
 SKILL_REGISTRY = os.path.join(REGISTRIES_DIR, "skill-registry.json")
 CONFIG_HASH_FILE = os.path.join(REGISTRIES_DIR, "last-known-config-hash.txt")
+CREDENTIAL_REGISTRY = os.path.join(CREDENTIALS_DIR, "credential-registry.json")
 
 # Report file
 CONFIG_REPORT = os.path.join(REPORTS_DIR, "config-report.md")
@@ -59,3 +61,21 @@ def find_servers_yaml():
         if os.path.exists(path):
             return path
     return None
+
+# Known .env file locations for credential scanning
+# Each tuple: (service_name, env_file_path)
+KNOWN_ENV_FILES = [
+    ("wiki-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-wiki-lite", ".env")),
+    ("jira-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-jira-lite", ".env")),
+    ("v1-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-v1-lite", ".env")),
+    ("atlassian-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-atlassian-lite", ".env")),
+    ("trendgpt", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-trendgpt-a2a", ".env")),
+    ("v1ego", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-v1ego", ".env")),
+    ("mcp-manager", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-manager", ".env")),
+    ("v1-api", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "lab-worker", ".claude", "skills", "v1-api", ".env")),
+]
+
+# Patterns that indicate a value is a secret (not a URL, username, etc.)
+SECRET_PATTERNS = [
+    "TOKEN", "KEY", "SECRET", "PASSWORD", "PASS", "AUTH",
+]

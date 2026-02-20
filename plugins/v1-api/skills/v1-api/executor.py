@@ -17,6 +17,7 @@ import yaml
 import requests
 from urllib3.util.ssl_ import create_urllib3_context
 from pathlib import Path
+import time
 from datetime import datetime, timedelta, timezone
 
 # ============ Configuration ============
@@ -35,40 +36,12 @@ REGION_URLS = {
 }
 
 # ============ Environment Loading ============
-# Requires: credential-manager (pip install keyring)
-# Loads API key from OS credential store via claude_cred, falls back to .env
 
-def _load_credentials():
-    """Load V1 credentials. Priority: credential-manager > .env > existing env vars."""
-    cred_paths = [
-        os.path.expanduser('~/.claude/super-manager/credentials'),
-        str(SKILL_DIR / 'credentials'),
-    ]
-    for p in cred_paths:
-        try:
-            sys.path.insert(0, p)
-            from claude_cred import load_env
-            load_env()
-            return
-        except (ImportError, FileNotFoundError):
-            continue
-        finally:
-            if p in sys.path:
-                sys.path.remove(p)
-
-    # Fallback: plain .env file (no credential resolution)
-    env_file = SKILL_DIR / '.env'
-    if env_file.exists():
-        for line in env_file.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            k, v = line.split('=', 1)
-            k, v = k.strip(), v.strip().strip('"\'')
-            if not v.startswith('credential:'):
-                os.environ.setdefault(k, v)
-
-_load_credentials()
+# Load .env (with credential store support)
+import sys as _sys
+_sys.path.insert(0, os.path.expanduser('~/.claude/super-manager/credentials'))
+from claude_cred import load_env
+load_env()
 
 # ============ API Request ============
 
@@ -76,7 +49,7 @@ _session = None
 
 # DNS override support for VPN environments
 DNS_OVERRIDE = {
-    'api.xdr.trendmicro.com': os.environ.get('V1_DNS_IP', ''),
+    'api.xdr.trendmicro.com': os.environ.get('V1_DNS_IP', '54.81.200.252'),
     'api.eu.xdr.trendmicro.com': os.environ.get('V1_DNS_IP_EU', ''),
     'api.xdr.trendmicro.co.jp': os.environ.get('V1_DNS_IP_JP', ''),
 }
@@ -187,6 +160,66 @@ def api_request(method, endpoint, params=None, body=None, headers=None, timeout=
     except Exception as e:
         return {'error': str(e)}
 
+
+def api_request_all_pages(method, endpoint, params=None, body=None, headers=None, timeout=30, max_pages=50):
+    """Make API request and follow nextLink/progressRate to get ALL results.
+
+    V1 search APIs return progressRate < 100 while still searching, and
+    nextLink to fetch subsequent pages. This follows both automatically.
+    """
+    all_items = []
+    page = 0
+    url = f"{get_base_url()}{endpoint}"
+    hdrs = get_headers(headers)
+    session = get_session()
+
+    while page < max_pages:
+        try:
+            if page == 0:
+                r = session.get(url, headers=hdrs, params=params, timeout=timeout)
+            else:
+                # nextLink is a full URL, no extra params needed
+                r = session.get(url, headers=hdrs, timeout=timeout)
+
+            if r.status_code not in (200, 201, 202, 204):
+                if all_items:
+                    return {'items': all_items, 'error': f'Page {page}: HTTP {r.status_code}'}
+                return {'error': f'HTTP {r.status_code}: {r.text[:500]}'}
+
+            if r.status_code == 204 or not r.text:
+                break
+
+            data = r.json()
+            items = data.get('items', [])
+            all_items.extend(items)
+
+            # Check for next page
+            next_link = data.get('nextLink', '')
+            progress = data.get('progressRate', 100)
+
+            if next_link:
+                url = next_link
+                page += 1
+            elif progress < 100:
+                # Search still running but no nextLink yet -- wait and retry same URL
+                time.sleep(1)
+                page += 1
+            else:
+                break
+
+        except Exception as e:
+            if all_items:
+                return {'items': all_items, 'error': f'Page {page}: {str(e)}'}
+            return {'error': str(e)}
+
+    result = {'items': all_items}
+    if page >= max_pages:
+        result['truncated'] = True
+        result['pages_fetched'] = page
+    result['progressRate'] = 100
+    result['totalItems'] = len(all_items)
+    return result
+
 # ============ YAML Config Loading ============
 
 OPERATIONS = {}
@@ -291,7 +324,7 @@ def execute_standard_list(endpoint, params, config):
     if config.get("order_by"):
         query_params["orderBy"] = config["order_by"]
 
-    return api_request("GET", endpoint, params=query_params, headers=extra_headers if extra_headers else None)
+    return api_request_all_pages("GET", endpoint, params=query_params, headers=extra_headers if extra_headers else None)
 
 
 def execute_search(endpoint, params, config):
@@ -322,7 +355,7 @@ def execute_search(endpoint, params, config):
         params.pop("filter", None)
         extra_headers["TMV1-Query"] = config.get("default_filter", "*")
 
-    return api_request("GET", endpoint, params=query_params, headers=extra_headers)
+    return api_request_all_pages("GET", endpoint, params=query_params, headers=extra_headers)
 
 
 def execute_single_get(endpoint, params, config):

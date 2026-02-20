@@ -1,7 +1,7 @@
 {
   "name": "skill-manager",
   "description": "Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": {
     "name": "grobomo"
   },

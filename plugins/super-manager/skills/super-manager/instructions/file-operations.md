@@ -23,3 +23,7 @@ OneDrive sync causes race conditions with Claude's Read/Write/Edit tools.
 | Glob tool | `find . -name "*.py"` |
 
 Always use bash equivalents for all file operations.
+
+**NEVER use temp directories** (C:\temp, /tmp, $TEMP) - use project `.tmp/` subfolder instead. Clean up after.
+
+**Read/Write/Edit tools ARE safe for non-OneDrive paths** (e.g. ~/.claude/, ~/.config/) - use them when heredocs fail.

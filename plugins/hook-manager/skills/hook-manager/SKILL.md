@@ -3,37 +3,17 @@
 name: hook-manager
 description: "Create and manage Claude Code hooks - correct schema, all event formats (including Stop), stdin/stdout contracts, enable/disable/verify. Knowledge base for hook development."
 keywords:
-  - hooks
   - hook
-  - make hook
-  - create hook
-  - add hook
-  - manage hooks
-  - list hooks
-  - enable hook
-  - disable hook
-  - verify hooks
-  - pretooluse
-  - posttooluse
-  - hook schema
-  - stop hook
-  - stop event
-  - userpromptsubmit
-  - subagent stop
-  - notification hook
-  - hook stdin
-  - hook stdout
-  - hook format
-  - last_assistant_message
-  - decision block
-  - stop_hook_active
-  - hook loop prevention
-  - instruction hook
-  - hook debug
-  - hook not working
-  - hook environment variables
-  - manage claude
-  - manage claude code
+  - hooks
+  - settings
+  - registry
+  - SessionStart
+  - SessionEnd
+  - PreToolUse
+  - PostToolUse
+  - UserPromptSubmit
+  - matcher
+  - debug
 
 ---
 
@@ -73,7 +53,7 @@ Hooks have specific stdin/stdout contracts per event type. Getting these wrong c
 **MUST check stop_hook_active to prevent infinite loops:**
 ```javascript
 var input = JSON.parse(require("fs").readFileSync(0, "utf-8"));
-if (input.stop_hook_active) process.exit(0); // SILENT EXIT - no output
+// if (input.stop_hook_active) process.exit(0); // Only if patterns are broad enough to re-trigger
 ```
 
 **stdout to block (make Claude continue):**
@@ -183,7 +163,7 @@ var path = require("path");
 // Read stdin SYNCHRONOUSLY - never use async/promises in hooks
 var input = JSON.parse(fs.readFileSync(0, "utf-8"));
 
-// For Stop hooks: prevent infinite loops
+// For Stop hooks: optionally check stop_hook_active to prevent loops
 if (input.stop_hook_active) process.exit(0);
 
 // Your logic here
@@ -222,7 +202,7 @@ if (shouldBlock) {
 
 1. **Adding matcher to UserPromptSubmit/Stop** - WRONG, causes "Expected string" error
 2. **Using matcher: {}** - WRONG, matcher must be string or omitted
-3. **Not checking stop_hook_active** - Causes INFINITE LOOP (hook blocks -> Claude responds -> hook blocks -> ...)
+3. **stop_hook_active** - Set to true when hook already blocked once this turn. Check it if your patterns are broad enough to re-trigger on corrected responses. Skip the check if you WANT looping until Claude gets it right (recommended for specific patterns).
 4. **Using async/promises in hooks** - Hook exits before async completes, output lost
 5. **Wrong output format for PreToolUse** - Must use `hookSpecificOutput` wrapper
 6. **Reading transcript instead of last_assistant_message** - Stop hook gets the response directly in stdin
@@ -264,3 +244,25 @@ python ~/.claude/super-manager/super_manager.py hooks verify
 ## Dependency
 
 Part of **super-manager** (`~/.claude/super-manager/`).
+
+## Instruction Frontmatter Fields
+
+Instructions in `~/.claude/instructions/<EventFolder>/` use YAML frontmatter:
+
+| Field | Format | Description |
+|-------|--------|-------------|
+| `id` | string | Unique identifier |
+| `pattern` | string (regex) | Combinatorial regex - use for permutations with quantifiers like `{0,10}` |
+| `keywords` | [array] | Comma-separated substring matches - use for simple exact phrases |
+| `description` | string | What the instruction enforces |
+
+**Use `pattern` (not `keywords`) when matching permutations:**
+```yaml
+# BAD: listing every permutation
+keywords: [should I fix, want me to fix, shall I fix, should I test, want me to test, ...]
+
+# GOOD: one regex covers all permutations
+pattern: (should|want|shall|would you like|do you want)\s.{0,10}(I|me)\s.{0,15}(test|run|fix|update|check|verify)
+```
+
+**Use `keywords` for simple exact phrases:** `[let me know if, is that okay, sound good]`

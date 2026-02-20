@@ -1,0 +1,100 @@
+{
+  "hooks": [
+    {
+      "name": "tool-reminder",
+      "event": "UserPromptSubmit",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "Unified injector: CLAUDE.md + skills + MCP suggestions + config change detection",
+      "command": "node \"C:/Users/joelg/.claude/hooks/tool-reminder.js\""
+    },
+    {
+      "name": "auto-gsd",
+      "event": "UserPromptSubmit",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "GSD task tracking and plan enforcement",
+      "command": "node \"C:/Users/joelg/.claude/hooks/auto-gsd.js\""
+    },
+    {
+      "name": "preference-learner",
+      "event": "UserPromptSubmit",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "Learns user preferences from interactions",
+      "command": "node \"C:/Users/joelg/.claude/hooks/preference-learner.js\""
+    },
+    {
+      "name": "gsd-check-update",
+      "event": "SessionStart",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "Checks for GSD framework updates",
+      "command": "node \"C:/Users/joelg/.claude/hooks/gsd-check-update.js\""
+    },
+    {
+      "name": "gsd-intel-session",
+      "event": "SessionStart",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "Injects codebase intelligence at session start",
+      "command": "node \"C:/Users/joelg/.claude/hooks/gsd-intel-session.js\""
+    },
+    {
+      "name": "config-awareness",
+      "event": "SessionStart",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "Loads config summary and writes config-report.md",
+      "command": "node \"C:/Users/joelg/.claude/hooks/config-awareness.js\""
+    },
+    {
+      "name": "backup",
+      "event": "SessionEnd",
+      "matcher": "*",
+      "async": true,
+      "managed": true,
+      "description": "Backs up settings, hooks, skills, MCP configs (last 10)",
+      "command": "TRIGGER=SessionEnd bash \"$HOME/.claude/skills/claude-backup/backup.sh\""
+    },
+    {
+      "name": "gsd-intel-index",
+      "event": "PostToolUse",
+      "matcher": "*",
+      "async": false,
+      "managed": true,
+      "description": "Indexes codebase entities after file operations",
+      "command": "node \"C:/Users/joelg/.claude/hooks/gsd-intel-index.js\""
+    },
+    {
+      "name": "gsd-verifier-check",
+      "event": "PostToolUse",
+      "matcher": "Task",
+      "async": false,
+      "managed": true,
+      "description": "Verifies task agent output quality",
+      "command": "node \"C:/Users/joelg/.claude/hooks/gsd-verifier-check.js\""
+    },
+    {
+      "name": "gsd-gate",
+      "event": "PreToolUse",
+      "matcher": "Write|Edit",
+      "async": false,
+      "managed": true,
+      "description": "Blocks Write/Edit without PLAN.md",
+      "command": "node \"C:/Users/joelg/.claude/hooks/gsd-gate.js\""
+    },
+    {
+      "name": "instruction-gate",
+      "event": "PreToolUse",
+      "description": "Loads contextual instructions when tools are about to be used"
+    }
+  ],
+  "version": "1.0"
+}

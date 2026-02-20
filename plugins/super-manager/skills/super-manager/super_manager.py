@@ -1,7 +1,7 @@
 """
 super_manager.py - Unified CLI for managing all Claude Code configuration.
 
-4 sub-managers: hooks, skills, mcp-servers, instructions
+5 sub-managers: hooks, skills, mcp-servers, instructions, credentials
 3 orchestration commands: status, doctor, report
 """
 import sys
@@ -21,6 +21,7 @@ def _get_manager(name):
         "skills": "managers.skill_manager",
         "mcp": "managers.mcp_server_manager",
         "instructions": "managers.instruction_manager",
+        "credentials": "managers.credential_manager",
     }
     module_path = mapping.get(name)
     if not module_path:
@@ -63,6 +64,12 @@ def cmd_duplicates(args):
         if idx + 2 < len(args):
             compare_paths = [args[idx + 1], args[idx + 2]]
     run(verbose=verbose, compare_paths=compare_paths)
+
+
+def cmd_discover(args):
+    from commands.discover import run
+    report = "--report" in args
+    run(report_only=report)
 
 
 def cmd_manager_action(manager_name, action, args):
@@ -140,31 +147,51 @@ def cmd_manager_action(manager_name, action, args):
             print("  (no matches)")
         print()
 
-    elif action == "start" and manager_name == "mcp":
-        name = args[0] if args else None
-        if not name:
-            print("Usage: mcp start <name>")
+    elif action == "store" and manager_name == "credentials":
+        key = args[0] if args else None
+        if not key:
+            print("Usage: credentials store <service/VARIABLE> [--clipboard|--stdin]")
             sys.exit(1)
-        result = mgr.start_server(name)
+        clipboard = "--clipboard" in args
+        stdin = "--stdin" in args
+        result = mgr.store_credential(key, clipboard=clipboard, stdin=stdin)
         print(result.get("message", "Done"))
 
-    elif action == "stop" and manager_name == "mcp":
-        name = args[0] if args else None
-        if not name:
-            print("Usage: mcp stop <name>")
+    elif action == "migrate" and manager_name == "credentials":
+        env_path = args[0] if args else None
+        service = args[1] if len(args) > 1 else None
+        if not env_path or not service:
+            print("Usage: credentials migrate <env_path> <service>")
             sys.exit(1)
-        result = mgr.stop_server(name)
+        result = mgr.migrate_env(env_path, service)
         print(result.get("message", "Done"))
 
-    elif action == "reload" and manager_name == "mcp":
-        result = mgr.reload_all()
-        print(result.get("message", "Done"))
+    elif action == "audit" and manager_name == "credentials":
+        result = mgr.audit_plaintext()
+        findings = result.get("findings", [])
+        print()
+        print("Credential Audit")
+        if findings:
+            print(f"  {len(findings)} plaintext tokens found:")
+            for f in findings:
+                fpath = f.get("file", f.get("env_path", "?"))
+                print(f"  [WARN] {f['service']}/{f['variable']} in {fpath}")
+            print()
+            print("  Migrate with:")
+            seen = set()
+            for f in findings:
+                fpath = f.get("file", f.get("env_path", "?"))
+                cmd_key = (fpath, f["service"])
+                if cmd_key not in seen:
+                    seen.add(cmd_key)
+                    print(f'    python super_manager.py credentials migrate "{fpath}" {f["service"]}')
+        else:
+            print("  No plaintext tokens found. All secure!")
+        print()
 
     else:
         print(f"Unknown action: {action}")
         print("Available: list, add, remove, enable, disable, verify")
-        if manager_name == "mcp":
-            print("MCP-specific: start, stop, reload")
         sys.exit(1)
 
 
@@ -216,14 +243,21 @@ def main():
         print("  report                Generate markdown config report")
         print("  duplicates [--verbose] Find duplicate skills/projects")
         print("  duplicates --compare <path_a> <path_b>")
+        print("  discover [--report]           Discover and auto-register all items")
         print()
         print("Sub-managers:")
         print("  hooks <action>        Manage Claude Code hooks")
         print("  skills <action>       Manage Claude Code skills")
         print("  mcp <action>          Manage MCP servers")
         print("  instructions <action> Manage context-aware instructions")
+        print("  credentials <action>  Manage API tokens and secrets")
         print()
         print("Actions: list, add, remove, enable, disable, verify")
+        print()
+        print("Credential-specific actions:")
+        print("  credentials store <service/KEY> [--clipboard|--stdin]")
+        print("  credentials migrate <env_path> <service>")
+        print("  credentials audit")
         sys.exit(0)
 
     command = sys.argv[1]
@@ -237,7 +271,9 @@ def main():
         cmd_report(rest)
     elif command == "duplicates":
         cmd_duplicates(rest)
-    elif command in ("hooks", "skills", "mcp", "instructions"):
+    elif command == "discover":
+        cmd_discover(rest)
+    elif command in ("hooks", "skills", "mcp", "instructions", "credentials"):
         if not rest:
             print(f"Usage: super_manager.py {command} <action>")
             print("Actions: list, add, remove, enable, disable, verify")

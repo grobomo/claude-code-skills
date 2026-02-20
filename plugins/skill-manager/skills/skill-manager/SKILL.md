@@ -3,37 +3,15 @@
 name: skill-manager
 description: "Self-installing skill manager: scans skills, enriches keywords, installs logging hooks, auto-maintains on session start. Triggers: 'skill inventory', 'skill keywords', 'scan skills', 'skill report', 'enrich keywords'"
 keywords:
-  - skill inventory
-  - skill keywords
-  - skill compliance
-  - skill report
-  - skill usage
-  - usage analytics
-  - keyword enrichment
-  - enrich keywords
-  - scan skills
+  - skill
+  - inventory
+  - keywords
+  - compliance
+  - usage
+  - analytics
+  - enrichment
   - frontmatter
-  - show status
-  - scan enrich
-  - scan enrich hooks
-  - test node
-  - test node setupjs
-  - start triggers
-  - start triggers skill
-  - scan skills skill
-  - inventory skill
-  - keywords skill
-  - compliance skill
-  - report skill
-  - usage skill
-  - analytics usage
-  - enrichment keyword
-  - keywords enrich
-  - skills scan
-  - status show
-  - enrich scan
-  - node test
-  - triggers start
+  - registry
 
 ---
 
@@ -99,9 +77,18 @@ node setup.js               # Full setup (scan + enrich + hooks + test)
 node setup.js --uninstall   # One-click restore from backup
 ```
 
+## Keyword Convention
+
+Keywords MUST be single words only. No multi-word phrases.
+
+- GOOD: `hook`, `settings`, `registry`, `backup`
+- BAD: `add hook`, `manage hooks`, `restore config`, `list backups`
+
+Claude's native matching is AI-based - it reads keywords + description and uses judgment. Single words give better signal than exact phrases, which require the user to type the exact expected string.
+
 ## Rules
 
 1. **Never delete** -- always backup/archive
-2. **Additive only** -- never remove existing keywords
+2. **Single-word keywords only** -- no multi-word phrases in frontmatter
 3. **Self-testing** -- 5 automated checks on every setup run
 4. **Pure Node.js** -- no npm dependencies (fs, path, os only)

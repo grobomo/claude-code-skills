@@ -32,7 +32,7 @@ def _extract_hook_name(command):
     """
     Extract a human-readable hook name from a command string.
     Examples:
-      node "C:/Users/USERNAME/.claude/hooks/tool-reminder.js"  -> "tool-reminder"
+      node "C:/Users/joelg/.claude/hooks/tool-reminder.js"  -> "tool-reminder"
       TRIGGER=SessionEnd bash "$HOME/.claude/skills/backup.sh" -> "backup"
     """
     match = re.search(r'"([^"]+)"', command)

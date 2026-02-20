@@ -5,11 +5,9 @@ keywords:
   - credential
   - secret
   - token
-  - store token
-  - api key
   - keyring
   - vault
-  - migrate credentials
+  - password
 ---
 
 # Credential Manager

@@ -1,5 +1,15 @@
 # Skill Manager Technical Reference
 
+## Architecture: Native Skill Matching
+
+skill-manager does NOT inject skill suggestions into prompts. Claude's native SKILL.md
+frontmatter keyword matching handles skill discovery. This means:
+
+1. **Keywords in SKILL.md frontmatter are critical** - they're what Claude uses to find skills
+2. **skill-manager-session.js** validates keyword quality at session start (>= 3 keywords, not just skill name)
+3. **CLAUDE.md** has "Skills ALWAYS preferred over MCP servers" rule
+4. **tool-reminder.js moduleSkill()** runs observe-only for logging, returns null
+
 ## Architecture Decision (2026-02-18)
 
 **Native frontmatter matching only.** Claude Code reads `keywords:` from SKILL.md frontmatter natively. No custom skill injection via hooks. skill-reminder.js removed from pipeline.
