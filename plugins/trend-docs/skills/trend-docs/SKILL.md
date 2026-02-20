@@ -59,13 +59,6 @@ picture. Examples:
 Use multiple WebSearches if needed to find the right pages. The user expects a complete
 answer, not a partial one with a follow-up question.
 
-## Prerequisites
-
-```bash
-pip install playwright
-playwright install chromium
-```
-
 ## Workflow
 
 1. **WebSearch** to find relevant page URLs (search ALL of trendmicro.com, not just one subdomain):

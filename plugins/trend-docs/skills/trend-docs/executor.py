@@ -26,12 +26,21 @@ if sys.stdout.encoding != 'utf-8':
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
-try:
-    from playwright.sync_api import sync_playwright
-except ImportError as e:
-    print(f"Missing dependency: {e}")
-    print("Install: pip install playwright && playwright install chromium")
-    sys.exit(1)
+def ensure_playwright():
+    """Auto-install playwright + chromium if missing."""
+    try:
+        from playwright.sync_api import sync_playwright
+        return sync_playwright
+    except ImportError:
+        import subprocess
+        print("[trend-docs] Installing playwright...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "playwright", "-q"])
+        print("[trend-docs] Installing chromium browser...")
+        subprocess.check_call([sys.executable, "-m", "playwright", "install", "chromium"])
+        from playwright.sync_api import sync_playwright
+        return sync_playwright
+
+sync_playwright = ensure_playwright()
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("trend-docs")
