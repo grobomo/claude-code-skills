@@ -17,7 +17,8 @@ jobs:
 
       - name: Regenerate plugins table
         run: |
-          TABLE_ROWS=""
+          STANDALONE_ROWS=""
+          CHILD_ROWS=""
           for plugin_dir in plugins/*/; do
             plugin_json="${plugin_dir}.claude-plugin/plugin.json"
             if [ ! -f "$plugin_json" ]; then
@@ -28,21 +29,51 @@ jobs:
             name=$(grep '"name"' "$plugin_json" | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
             description=$(grep '"description"' "$plugin_json" | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
             version=$(grep '"version"' "$plugin_json" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            parent=$(grep '"parent"' "$plugin_json" | head -1 | sed 's/.*"parent"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
 
-            if [ -n "$name" ] && [ -n "$version" ]; then
-              TABLE_ROWS="${TABLE_ROWS}| **${name}** | ${description} | ${version} | \`claude plugin install ${name}@grobomo-marketplace\` |\n"
+            if [ -z "$name" ] || [ -z "$version" ]; then
+              continue
+            fi
+
+            if [ -n "$parent" ]; then
+              # Sub-manager: indented, not bold, "included with <parent>"
+              CHILD_ROWS="${CHILD_ROWS}${parent}|${name}| \\&nbsp;\\&nbsp;\\&nbsp;\\&nbsp;${name} | ${description} | ${version} | included with ${parent} |\n"
+            else
+              # Standalone: bold name, full install command
+              STANDALONE_ROWS="${STANDALONE_ROWS}${name}|| **${name}** | ${description} | ${version} | \`claude plugin install ${name}@grobomo-marketplace\` |\n"
             fi
           done
 
-          # Sort rows alphabetically
-          SORTED_ROWS=$(printf "$TABLE_ROWS" | sort -t'|' -k2 -f)
+          # Sort standalone rows alphabetically by name (field 1 before the first |)
+          SORTED_STANDALONE=$(printf "$STANDALONE_ROWS" | sort -t'|' -k1,1 -f)
+          # Sort child rows alphabetically by parent then name
+          SORTED_CHILDREN=$(printf "$CHILD_ROWS" | sort -t'|' -k1,2 -f)
+
+          # Build final table: for each standalone row, append its children right after
+          FINAL_ROWS=""
+          while IFS= read -r row; do
+            [ -z "$row" ] && continue
+            # Extract the standalone plugin name (everything before the first |)
+            standalone_name=$(echo "$row" | cut -d'|' -f1)
+            # Add the standalone row (strip the sort-key prefix)
+            table_row=$(echo "$row" | cut -d'|' -f2-)
+            FINAL_ROWS="${FINAL_ROWS}|${table_row}\n"
+            # Find and append any children of this standalone plugin
+            while IFS= read -r child; do
+              [ -z "$child" ] && continue
+              child_parent=$(echo "$child" | cut -d'|' -f1)
+              if [ "$child_parent" = "$standalone_name" ]; then
+                child_table_row=$(echo "$child" | cut -d'|' -f2-)
+                FINAL_ROWS="${FINAL_ROWS}|${child_table_row}\n"
+              fi
+            done <<< "$(printf "$SORTED_CHILDREN")"
+          done <<< "$(printf "$SORTED_STANDALONE")"
 
           # Build the full table block
           TABLE_BLOCK="<!-- PLUGINS_TABLE_START -->\n| Plugin | Description | Version | Install |\n|--------|-------------|---------|---------|"
-          TABLE_BLOCK="${TABLE_BLOCK}\n${SORTED_ROWS}<!-- PLUGINS_TABLE_END -->"
+          TABLE_BLOCK="${TABLE_BLOCK}\n${FINAL_ROWS}<!-- PLUGINS_TABLE_END -->"
 
           # Replace the table in README.md
-          # Use awk to replace content between markers
           awk -v table="$TABLE_BLOCK" '
             /<!-- PLUGINS_TABLE_START -->/ { found=1; print table; next }
             /<!-- PLUGINS_TABLE_END -->/ { found=0; next }

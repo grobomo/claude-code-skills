@@ -5,6 +5,7 @@
   "author": {
     "name": "grobomo"
   },
+  "parent": "super-manager",
   "keywords": [
     "skill",
     "keyword",

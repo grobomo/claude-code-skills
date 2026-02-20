@@ -3,6 +3,7 @@
   "description": "Store and retrieve API tokens/secrets in OS credential store (Windows Credential Manager / macOS Keychain). GUI popup for zero-friction secure storage.",
   "version": "1.0.0",
   "author": {"name": "grobomo"},
+  "parent": "super-manager",
   "keywords": ["credential", "secret", "token", "keyring", "vault", "security"],
   "skills": ["./skills/credential-manager"]
 }
