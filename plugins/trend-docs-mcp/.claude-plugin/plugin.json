@@ -1,0 +1,20 @@
+{
+  "name": "trend-docs-mcp",
+  "description": "MCP server for searching and reading Trend Micro documentation. DuckDuckGo search + async Playwright extraction for JS SPA pages. Companion to the trend-docs skill.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "trend-micro",
+    "documentation",
+    "mcp",
+    "server",
+    "playwright",
+    "search",
+    "docs"
+  ],
+  "skills": [
+    "./skills/trend-docs-mcp"
+  ]
+}
