@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins for security operations, configuration management, and developer productivity",
-    "version": "0.3.0"
+    "version": "0.4.0"
   },
   "plugins": [
     {
@@ -75,6 +75,24 @@
       "name": "trend-docs",
       "source": "./plugins/trend-docs",
       "description": "Read Trend Micro documentation from JS SPA pages using Playwright. Auto-installs dependencies.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      }
+    },
+    {
+      "name": "mcp-manager",
+      "source": "./plugins/mcp-manager",
+      "description": "Manage MCP servers - list, enable, disable, start, stop, reload. Configuration and lifecycle management.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      }
+    },
+    {
+      "name": "instruction-manager",
+      "source": "./plugins/instruction-manager",
+      "description": "Manage context-aware instruction files with keyword matching. Conditional context injection for Claude Code sessions.",
       "version": "1.0.0",
       "author": {
         "name": "grobomo"

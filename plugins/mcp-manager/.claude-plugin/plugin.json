@@ -1,0 +1,6 @@
+{
+  "name": "mcp-manager",
+  "version": "1.0.0",
+  "description": "Manage MCP servers - list, enable, disable, start, stop, reload. Configuration and lifecycle management.",
+  "parent": "super-manager"
+}

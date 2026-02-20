@@ -1,0 +1,6 @@
+{
+  "name": "instruction-manager",
+  "version": "1.0.0",
+  "description": "Manage context-aware instruction files with keyword matching. Conditional context injection for Claude Code sessions.",
+  "parent": "super-manager"
+}

@@ -15,16 +15,25 @@ claude plugin install super-manager@grobomo-marketplace --scope user
 ## Available Plugins
 
 <!-- PLUGINS_TABLE_START -->
-| Plugin | Description | Version | Install |
-|--------|-------------|---------|---------|
-| **diff-view** | Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow. Opens in browser. | 1.0.0 | `claude plugin install diff-view@grobomo-marketplace` |
-| **memo-edit** | Safely edit CLAUDE.md project memos with proper section management. Prevents accidental overwrites and maintains structure. | 1.0.0 | `claude plugin install memo-edit@grobomo-marketplace` |
-| **super-manager** | Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. Status dashboard, doctor diagnostics, auto-fix, and duplicate detection. | 1.0.0 | `claude plugin install super-manager@grobomo-marketplace` |
-| &nbsp;&nbsp;&nbsp;&nbsp;credential-manager | Store and retrieve API tokens/secrets in OS credential store (Windows Credential Manager / macOS Keychain). GUI popup for zero-friction secure storage. | 1.0.0 | *included* |
-| &nbsp;&nbsp;&nbsp;&nbsp;hook-manager | Create and manage Claude Code hooks - correct schema, all event formats, stdin/stdout contracts, enable/disable/verify. Complete hook knowledge base. | 1.0.0 | *included* |
-| &nbsp;&nbsp;&nbsp;&nbsp;skill-manager | Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance | 1.0.0 | *included* |
-| **trend-docs** | Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads. | 1.1.0 | `claude plugin install trend-docs@grobomo-marketplace` |
-| **v1-api** | Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more. | 1.0.0 | `claude plugin install v1-api@grobomo-marketplace` |
+### Super Manager Ecosystem
+
+| Plugin | Description | Install | Links |
+|--------|-------------|---------|-------|
+| **super-manager** | Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. Status dashboard, doctor diagnostics, auto-fix, and duplicate detection. | `claude plugin install super-manager@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/super-manager) |
+| &nbsp;&nbsp;&nbsp;&nbsp;credential-manager | Store and retrieve API tokens/secrets in OS credential store (Windows Credential Manager / macOS Keychain). GUI popup for zero-friction secure storage. | `claude plugin install credential-manager@grobomo-marketplace` (included with super-manager) | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/credential-manager) |
+| &nbsp;&nbsp;&nbsp;&nbsp;hook-manager | Create and manage Claude Code hooks - correct schema, all event formats, stdin/stdout contracts, enable/disable/verify. Complete hook knowledge base. | `claude plugin install hook-manager@grobomo-marketplace` (included with super-manager) | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/hook-manager) |
+| &nbsp;&nbsp;&nbsp;&nbsp;instruction-manager | Manage context-aware instruction files with keyword matching. Conditional context injection for Claude Code sessions. | `claude plugin install instruction-manager@grobomo-marketplace` (included with super-manager) | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/instruction-manager) |
+| &nbsp;&nbsp;&nbsp;&nbsp;mcp-manager | Manage MCP servers - list, enable, disable, start, stop, reload. Configuration and lifecycle management. | `claude plugin install mcp-manager@grobomo-marketplace` (included with super-manager) | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/mcp-manager) |
+| &nbsp;&nbsp;&nbsp;&nbsp;skill-manager | Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance | `claude plugin install skill-manager@grobomo-marketplace` (included with super-manager) | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/skill-manager) |
+
+### Standalone Plugins
+
+| Plugin | Description | Install | Links |
+|--------|-------------|---------|-------|
+| **diff-view** | Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow. Opens in browser. | `claude plugin install diff-view@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/diff-view) |
+| **memo-edit** | Safely edit CLAUDE.md project memos with proper section management. Prevents accidental overwrites and maintains structure. | `claude plugin install memo-edit@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/memo-edit) |
+| **trend-docs** | Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads. | `claude plugin install trend-docs@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs) |
+| **v1-api** | Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more. | `claude plugin install v1-api@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/v1-api) |
 <!-- PLUGINS_TABLE_END -->
 
 ## Plugin Details
@@ -41,11 +50,21 @@ Safe section-level editing of CLAUDE.md project memos. Prevents accidental overw
 
 Unified config dashboard and doctor for Claude Code. Manages hooks, skills, MCP servers, and instructions from a single CLI. Includes `status`, `doctor --fix`, `report`, and `duplicates` commands.
 
-Includes three sub-manager plugins that are installed automatically with super-manager:
+Includes five sub-manager plugins that are installed automatically with super-manager:
 
 - **credential-manager** -- Store and retrieve API tokens/secrets in the OS credential store (Windows Credential Manager / macOS Keychain) instead of plaintext files. GUI popup for secure entry, `.env` migration, and Python/Node.js resolver libraries.
 - **hook-manager** -- Create and manage Claude Code hooks with correct schema for all event types. Covers stdin/stdout contracts, matcher rules, Stop hook loop prevention, PreToolUse deny/allow/ask patterns, and management commands.
+- **instruction-manager** -- Manage context-aware instruction files that conditionally inject guidance based on prompt keywords. Solves the "Claude forgets rules after long sessions" problem.
+- **mcp-manager** -- Manage MCP server configuration and lifecycle. List, enable, disable, start, stop, and reload servers with PID tracking and hot reload.
 - **skill-manager** -- Self-installing skill manager that enriches skills with keyword metadata, runs hook health checks, and performs auto-maintenance on session start.
+
+### mcp-manager
+
+Manage MCP server configuration and lifecycle. List, enable, disable, start, stop, and reload servers from a unified CLI. Reads from servers.yaml registry, tracks PIDs, and supports hot reload without restarting Claude.
+
+### instruction-manager
+
+Manage context-aware instruction files that conditionally inject guidance based on prompt keywords. Each instruction is a markdown file with YAML frontmatter containing keywords. When a prompt matches, the instruction content is injected as context -- solving the "Claude forgets rules after long sessions" problem.
 
 ### trend-docs
 

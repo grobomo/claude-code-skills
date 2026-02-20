@@ -29,30 +29,37 @@ jobs:
                   meta = json.load(f)
               plugins.append(meta)
 
-          # Separate standalone and children
-          standalone = [p for p in plugins if not p.get("parent")]
-          children = [p for p in plugins if p.get("parent")]
+          standalone = sorted([p for p in plugins if not p.get("parent")], key=lambda x: x["name"].lower())
+          children = sorted([p for p in plugins if p.get("parent")], key=lambda x: x["name"].lower())
 
-          # Build rows
-          rows = []
-          for p in sorted(standalone, key=lambda x: x["name"].lower()):
-              n = p["name"]
-              rows.append(f'| **{n}** | {p["description"]} | {p["version"]} | `claude plugin install {n}@grobomo-marketplace` |')
-              # Append children of this plugin
-              for c in sorted(children, key=lambda x: x["name"].lower()):
-                  if c.get("parent") == n:
-                      rows.append(f'| &nbsp;&nbsp;&nbsp;&nbsp;{c["name"]} | {c["description"]} | {c["version"]} | *included* |')
+          base = "https://github.com/grobomo/claude-code-skills/tree/main/plugins"
 
-          table_lines = [
-              "<!-- PLUGINS_TABLE_START -->",
-              "| Plugin | Description | Version | Install |",
-              "|--------|-------------|---------|---------|",
-          ] + rows + [
-              "<!-- PLUGINS_TABLE_END -->",
-          ]
-          table_block = "\n".join(table_lines)
+          # Super Manager Ecosystem table
+          sm_rows = []
+          for p in standalone:
+              if p["name"] == "super-manager":
+                  n = p["name"]
+                  sm_rows.append(f'| **{n}** | {p["description"]} | `claude plugin install {n}@grobomo-marketplace` | [GitHub]({base}/{n}) |')
+                  for c in children:
+                      if c.get("parent") == "super-manager":
+                          cn = c["name"]
+                          sm_rows.append(f'| &nbsp;&nbsp;&nbsp;&nbsp;{cn} | {c["description"]} | `claude plugin install {cn}@grobomo-marketplace` (included with super-manager) | [GitHub]({base}/{cn}) |')
 
-          # Replace in README
+          # Standalone table
+          other_rows = []
+          for p in standalone:
+              if p["name"] != "super-manager":
+                  n = p["name"]
+                  other_rows.append(f'| **{n}** | {p["description"]} | `claude plugin install {n}@grobomo-marketplace` | [GitHub]({base}/{n}) |')
+
+          sm_header = "### Super Manager Ecosystem\n\n| Plugin | Description | Install | Links |\n|--------|-------------|---------|-------|"
+          other_header = "### Standalone Plugins\n\n| Plugin | Description | Install | Links |\n|--------|-------------|---------|-------|"
+
+          sm_table = sm_header + "\n" + "\n".join(sm_rows)
+          other_table = other_header + "\n" + "\n".join(other_rows)
+
+          table_block = "<!-- PLUGINS_TABLE_START -->\n" + sm_table + "\n\n" + other_table + "\n<!-- PLUGINS_TABLE_END -->"
+
           with open("README.md") as f:
               readme = f.read()
           readme = re.sub(
@@ -63,7 +70,7 @@ jobs:
           )
           with open("README.md", "w") as f:
               f.write(readme)
-          print("README updated with", len(rows), "rows")
+          print("README updated with", len(sm_rows) + len(other_rows), "rows")
           PYEOF
 
       - name: Commit and push if changed
