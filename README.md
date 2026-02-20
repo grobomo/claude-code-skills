@@ -31,7 +31,6 @@ claude plugin install super-manager@grobomo-marketplace --scope user
 | Plugin | Description | Install | Links |
 |--------|-------------|---------|-------|
 | **diff-view** | Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow. Opens in browser. | `claude plugin install diff-view@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/diff-view) |
-| **memo-edit** | Safely edit CLAUDE.md project memos with proper section management. Prevents accidental overwrites and maintains structure. | `claude plugin install memo-edit@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/memo-edit) |
 | **trend-docs** | Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads. | `claude plugin install trend-docs@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs) |
 | **v1-api** | Trend Micro Vision One API - skill (280+ ops via executor.py) + MCP server (75 ops via server.py). Alerts, endpoints, threats, cloud security, response actions. | `claude plugin install v1-api@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/v1-api) |
 <!-- PLUGINS_TABLE_END -->
