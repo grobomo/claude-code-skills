@@ -42,6 +42,13 @@
       "description": "Safely edit CLAUDE.md project memos with proper section management.",
       "version": "1.0.0",
       "author": {"name": "grobomo"}
+    },
+    {
+      "name": "skill-manager",
+      "source": "./plugins/skill-manager",
+      "description": "Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance.",
+      "version": "1.0.0",
+      "author": {"name": "grobomo"}
     }
   ]
 }
