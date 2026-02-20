@@ -6,20 +6,29 @@ Usage: python executor.py --urls "URL1,URL2" or python executor.py "slug-name"
 Workflow: WebSearch finds URLs -> this script extracts them -> Claude summarizes.
 ~25s/page (5s browser launch + 20s SPA hydration). Parallel tabs for multi-page.
 
+PDF support: Detects .pdf URLs, downloads via Playwright (handles Akamai cookie
+redirects that break curl with exit code 47), saves to ~/Downloads, extracts text
+with PyPDF2.
+
 Lessons learned:
 - "networkidle" adds 10-15s for trackers; use "domcontentloaded" + selector wait
 - Blind sleep loops (2s+3s+5s) waste 10s/page; wait for .main-content instead
 - OLH uses .main-content, KB uses main.article-page - different extractors
 - Pipe chars in table cells replaced with / to avoid breaking markdown tables
 - One 2s retry if content <100 chars catches slow hydration edge cases
+- docs.trendmicro.com PDFs use Akamai CDN that sets ew-request cookie + redirect
+  loop; curl fails with exit 47 (max redirects). Playwright handles cookies natively.
+- ohc.blob.core.windows.net PDFs work with curl (direct Azure blob, no Akamai)
 """
 
 import sys
+import os
 import re
 import argparse
 import logging
 import io
 import time
+from pathlib import Path
 
 # Force UTF-8 output on Windows
 if sys.stdout.encoding != 'utf-8':
@@ -71,6 +80,30 @@ def is_slug(text):
 
 def is_olh(url):
     return "docs.trendmicro.com" in url
+
+
+def is_pdf(url):
+    return url.lower().rstrip("/").endswith(".pdf")
+
+
+def get_downloads_dir():
+    """Get ~/Downloads, create if missing."""
+    dl = Path.home() / "Downloads"
+    dl.mkdir(exist_ok=True)
+    return dl
+
+
+def ensure_pypdf2():
+    """Auto-install PyPDF2 if missing."""
+    try:
+        import PyPDF2
+        return PyPDF2
+    except ImportError:
+        import subprocess
+        log.info("[trend-docs] Installing PyPDF2...")
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "PyPDF2", "-q"])
+        import PyPDF2
+        return PyPDF2
 
 
 # ============ Content Extraction JS ============
@@ -216,6 +249,71 @@ def wait_and_extract(page_obj, url):
     return result
 
 
+# ============ PDF Download + Extract ============
+
+def download_pdf_playwright(url, context):
+    """Download PDF via Playwright (handles Akamai cookie redirects that break curl).
+    Saves to ~/Downloads, returns (local_path, filename) or (None, error_msg)."""
+    downloads_dir = get_downloads_dir()
+    filename = url.split("/")[-1].split("?")[0]
+    if not filename.endswith(".pdf"):
+        filename += ".pdf"
+    save_path = downloads_dir / filename
+
+    try:
+        page = context.new_page()
+        # Intercept the download triggered by navigating to a PDF URL
+        with page.expect_download(timeout=30000) as dl_info:
+            page.goto(url, timeout=30000)
+        download = dl_info.value
+        download.save_as(str(save_path))
+        page.close()
+        return str(save_path), filename
+    except Exception:
+        # Fallback: some PDFs render in-browser instead of downloading.
+        # Try a direct request via Playwright's API context.
+        try:
+            page.close()
+        except Exception:
+            pass
+        try:
+            api_ctx = context.request
+            resp = api_ctx.get(url)
+            if resp.status == 200 and len(resp.body()) > 1000:
+                save_path.write_bytes(resp.body())
+                return str(save_path), filename
+        except Exception as e2:
+            return None, f"Download failed: {e2}"
+    return None, "Download failed: unknown error"
+
+
+def extract_pdf_text(pdf_path, pages=None):
+    """Extract text from PDF using PyPDF2. Returns markdown string."""
+    PyPDF2 = ensure_pypdf2()
+    try:
+        reader = PyPDF2.PdfReader(pdf_path)
+        total = len(reader.pages)
+        # Parse page range like "1-5" or "3" or None (all)
+        if pages:
+            parts = pages.split("-")
+            start = int(parts[0]) - 1
+            end = int(parts[1]) if len(parts) > 1 else start + 1
+        else:
+            start, end = 0, min(total, 20)  # Cap at 20 pages by default
+
+        texts = []
+        for i in range(start, min(end, total)):
+            text = reader.pages[i].extract_text()
+            if text and text.strip():
+                texts.append(f"--- Page {i+1} ---\n{text.strip()}")
+
+        filename = Path(pdf_path).name
+        header = f"# {filename}\nSource: {pdf_path}\nPages: {start+1}-{min(end, total)} of {total}\n\n"
+        return header + "\n\n".join(texts) if texts else header + "(No extractable text)"
+    except Exception as e:
+        return f"# PDF Extract Error\n{e}"
+
+
 # ============ Main ============
 
 def run_batch(urls, max_pages=10):
@@ -225,16 +323,35 @@ def run_batch(urls, max_pages=10):
         print("No URLs provided.")
         return
 
+    # Separate PDF URLs from HTML URLs
+    pdf_urls = [u for u in urls if is_pdf(u)]
+    html_urls = [u for u in urls if not is_pdf(u)]
+
     output_sections = []
     t0 = time.time()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True, args=BROWSER_ARGS)
-        context = browser.new_context(user_agent=UA, java_script_enabled=True)
+        context = browser.new_context(user_agent=UA, java_script_enabled=True,
+                                       accept_downloads=True)
 
-        # Open all pages in parallel tabs
+        # Handle PDF downloads first
+        for i, url in enumerate(pdf_urls):
+            log.info(f"[pdf {i+1}] downloading {url}")
+            path, info = download_pdf_playwright(url, context)
+            if path:
+                log.info(f"  [pdf {i+1}] saved: {path}")
+                text = extract_pdf_text(path)
+                if text:
+                    output_sections.append(text)
+                # Always notify where PDF was saved
+                print(f"[SAVED] {info} -> {path}")
+            else:
+                log.info(f"  [pdf {i+1}] FAILED: {info}")
+
+        # Open all HTML pages in parallel tabs
         tabs = []
-        for i, url in enumerate(urls):
+        for i, url in enumerate(html_urls):
             log.info(f"[tab {i+1}] loading {url}")
             page = context.new_page()
             page.goto(url, wait_until="domcontentloaded", timeout=20000)
@@ -266,7 +383,7 @@ def run_batch(urls, max_pages=10):
     else:
         print("\n\n---\n\n".join(output_sections))
 
-    log.info(f"\n[done] {len(urls)} pages, {len(output_sections)} returned, {elapsed:.1f}s")
+    log.info(f"\n[done] {len(urls)} pages ({len(pdf_urls)} PDF, {len(html_urls)} HTML), {len(output_sections)} returned, {elapsed:.1f}s")
 
 
 def main():

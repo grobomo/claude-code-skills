@@ -1,6 +1,15 @@
 ---
 name: trend-docs
-description: Read Trend Micro documentation. Searches, extracts, and returns clean content from docs.trendmicro.com and success.trendmicro.com KB articles with relevant related pages.
+description: >
+  Read Trend Micro documentation. Searches, extracts, and returns clean content
+  from docs.trendmicro.com and success.trendmicro.com KB articles.
+  Products: Deep Discovery Analyzer (DDAN), Deep Discovery Inspector (DDI),
+  Deep Discovery Director (DDD), Apex One, Apex Central, Vision One (V1),
+  TippingPoint, InterScan Messaging Security (IMSVA), InterScan Web Security (IWSVA),
+  OfficeScan, Worry-Free Business Security (WFBSS), Cloud One, Zero Trust Secure Access (ZTSA),
+  Secure Access Module (SAM), Virtual Network Sensor (VNS), Cloud Email and Collaboration
+  Protection (CECP), Trend Micro Control Manager (TMCM), Service Gateway, ServerProtect,
+  Deep Security, Cloud App Security (CAS), Email Security, Network Defense.
 keywords:
   - docs
   - documentation
@@ -8,9 +17,30 @@ keywords:
   - help
   - olh
   - knowledge
-  - best practice
-  - admin guide
-  - install guide
+  - ddan
+  - ddi
+  - ddd
+  - apex
+  - xdr
+  - ztsa
+  - vns
+  - sam
+  - tippingpoint
+  - imsva
+  - iwsva
+  - officescan
+  - worryfreebiz
+  - deepdiscovery
+  - interscan
+  - cloudone
+  - port
+  - firewall
+  - gateway
+  - cecp
+  - tmcm
+  - serverprotect
+  - deepsecurity
+  - cas
 ---
 
 # Trend Docs Skill
@@ -59,6 +89,13 @@ picture. Examples:
 Use multiple WebSearches if needed to find the right pages. The user expects a complete
 answer, not a partial one with a follow-up question.
 
+## CRITICAL: Save Files + Notify User
+
+- **All downloaded docs and report files MUST be saved to `~/Downloads/`**
+- **ALWAYS tell the user where files were saved** - include the full path in your response
+- Never save to /tmp, $TEMP, or other temp directories
+- The executor handles PDF saves automatically (prints `[SAVED] filename -> path`)
+
 ## Workflow
 
 1. **WebSearch** to find relevant page URLs (search ALL of trendmicro.com, not just one subdomain):
@@ -66,19 +103,20 @@ answer, not a partial one with a follow-up question.
    WebSearch: site:trendmicro.com "<query terms>"
    ```
 
-2. **Extract content** based on source type:
+2. **Extract content** - the executor handles BOTH HTML pages and PDFs:
 
-   **For docs.trendmicro.com and success.trendmicro.com** (JS SPAs - Playwright required):
+   **For any trendmicro.com URL** (HTML or PDF - executor auto-detects):
    ```bash
    python ~/.claude/skills/trend-docs/executor.py --urls "URL1,URL2,URL3" --max-pages 5
    ```
 
-   **For PDF files** (admin guides, install guides, best practice guides):
-   ```bash
-   # Download PDF, then read with Read tool (supports PDF natively)
-   curl -sL -o /tmp/guide.pdf "https://example.trendmicro.com/guide.pdf"
-   # Then use Read tool on /tmp/guide.pdf (supports pages parameter for large PDFs)
-   ```
+   PDF URLs (.pdf) are automatically:
+   - Downloaded via Playwright (handles Akamai cookie redirects that break curl)
+   - Saved to ~/Downloads/
+   - Text extracted with PyPDF2 and returned as markdown
+
+   **Note:** `curl` fails on docs.trendmicro.com PDFs (Akamai CDN redirect loop, exit 47).
+   The `ohc.blob.core.windows.net` PDFs work with curl but use the executor for consistency.
 
 3. **Present findings** to the user. ALWAYS include both parts:
 
@@ -92,6 +130,13 @@ answer, not a partial one with a follow-up question.
    - [Article Title (KB)](https://success.trendmicro.com/...)
    ```
    Label each source type: OLH, KB, or PDF. This lets the user click through to verify.
+
+   **File Saves** - If any files were downloaded/generated, list them:
+   ```
+   Files saved:
+   - ~/Downloads/ddan_7.6_idg.pdf
+   - ~/Downloads/dd-ports-reference.md
+   ```
 
 ## Best Practice Guides Index
 
