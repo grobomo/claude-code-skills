@@ -32,15 +32,8 @@ claude plugin install super-manager@grobomo-marketplace --scope user
 |--------|-------------|---------|-------|
 | **diff-view** | Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow. Opens in browser. | `claude plugin install diff-view@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/diff-view) |
 | **trend-docs** | Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads. | `claude plugin install trend-docs@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs) |
+| **trend-docs-mcp** | MCP server for searching and reading Trend Micro documentation. DuckDuckGo search + async Playwright extraction for JS SPA pages. Companion to the trend-docs skill. | `claude plugin install trend-docs-mcp@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs-mcp) |
 | **v1-api** | Trend Micro Vision One API - skill (280+ ops via executor.py) + MCP server (75 ops via server.py). Alerts, endpoints, threats, cloud security, response actions. | `claude plugin install v1-api@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/v1-api) |
-
-### MCP Servers
-
-MCP server plugins provide tools via the [Model Context Protocol](https://modelcontextprotocol.io/). After installing, add the server to your `.mcp.json` to make its tools available. MCP server plugins can coexist with their skill counterparts.
-
-| Plugin | Tools | Description | Install | Links |
-|--------|-------|-------------|---------|-------|
-| **trend-docs-mcp** | `trend_docs_search`, `trend_docs_extract` | Search and read Trend Micro docs (JS SPA pages via async Playwright + DuckDuckGo). Companion to trend-docs skill. | `claude plugin install trend-docs-mcp@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs-mcp) |
 <!-- PLUGINS_TABLE_END -->
 
 ## License
