@@ -35,18 +35,40 @@ REGION_URLS = {
 }
 
 # ============ Environment Loading ============
+# Requires: credential-manager (pip install keyring)
+# Loads API key from OS credential store via claude_cred, falls back to .env
 
-def load_env():
-    """Load .env file from skill folder."""
+def _load_credentials():
+    """Load V1 credentials. Priority: credential-manager > .env > existing env vars."""
+    cred_paths = [
+        os.path.expanduser('~/.claude/super-manager/credentials'),
+        str(SKILL_DIR / 'credentials'),
+    ]
+    for p in cred_paths:
+        try:
+            sys.path.insert(0, p)
+            from claude_cred import load_env
+            load_env()
+            return
+        except (ImportError, FileNotFoundError):
+            continue
+        finally:
+            if p in sys.path:
+                sys.path.remove(p)
+
+    # Fallback: plain .env file (no credential resolution)
     env_file = SKILL_DIR / '.env'
     if env_file.exists():
         for line in env_file.read_text().splitlines():
             line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                key, value = line.split('=', 1)
-                os.environ[key.strip()] = value.strip().strip('"\'')
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            k, v = line.split('=', 1)
+            k, v = k.strip(), v.strip().strip('"\'')
+            if not v.startswith('credential:'):
+                os.environ.setdefault(k, v)
 
-load_env()
+_load_credentials()
 
 # ============ API Request ============
 

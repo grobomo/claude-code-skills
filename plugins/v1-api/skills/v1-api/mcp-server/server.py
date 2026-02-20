@@ -27,20 +27,42 @@ from typing import Any, Dict, List, Optional
 from mcp.server.fastmcp import FastMCP
 
 # Load environment
-# Try credential store first (if super-manager installed), fall back to plain .env
+# Requires: credential-manager (pip install keyring)
+# Loads API key from OS credential store via claude_cred, falls back to .env
 import sys as _sys
-try:
-    _sys.path.insert(0, os.path.expanduser('~/.claude/super-manager/credentials'))
-    from claude_cred import load_env
-    load_env()
-except (ImportError, FileNotFoundError):
-    _env_file = Path(__file__).parent / ".env"
+
+def _load_credentials():
+    """Load V1 credentials. Priority: credential-manager > .env > existing env vars."""
+    _server_dir = Path(__file__).parent
+    cred_paths = [
+        os.path.expanduser('~/.claude/super-manager/credentials'),
+        str(_server_dir / 'credentials'),
+    ]
+    for p in cred_paths:
+        try:
+            _sys.path.insert(0, p)
+            from claude_cred import load_env
+            load_env()
+            return
+        except (ImportError, FileNotFoundError):
+            continue
+        finally:
+            if p in _sys.path:
+                _sys.path.remove(p)
+
+    # Fallback: plain .env file (no credential resolution)
+    _env_file = _server_dir / '.env'
     if _env_file.exists():
         for line in _env_file.read_text().splitlines():
             line = line.strip()
-            if line and not line.startswith('#') and '=' in line:
-                k, v = line.split('=', 1)
-                os.environ.setdefault(k.strip(), v.strip())
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            k, v = line.split('=', 1)
+            k, v = k.strip(), v.strip().strip('"\'')
+            if not v.startswith('credential:'):
+                os.environ.setdefault(k, v)
+
+_load_credentials()
 
 # Import templates
 from templates.base import api_request, get_base_url, get_headers
