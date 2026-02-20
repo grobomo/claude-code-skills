@@ -1,0 +1,10 @@
+{
+  "v1-lite": {
+    "command": "python",
+    "args": ["skills/v1-api/mcp-server/server.py"],
+    "env": {
+      "V1_API_KEY": "${V1_API_KEY}",
+      "V1_REGION": "${V1_REGION}"
+    }
+  }
+}

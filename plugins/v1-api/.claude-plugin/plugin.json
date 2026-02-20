@@ -1,8 +1,8 @@
 {
   "name": "v1-api",
-  "description": "Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more.",
-  "version": "1.0.0",
+  "description": "Trend Micro Vision One API - skill (280+ ops via executor.py) + MCP server (75 ops via server.py). Alerts, endpoints, threats, cloud security, response actions.",
+  "version": "2.0.0",
   "author": {"name": "grobomo"},
-  "keywords": ["vision-one", "xdr", "trend-micro", "security", "api", "alerts", "endpoints", "threats"],
+  "keywords": ["vision-one", "xdr", "trend-micro", "security", "api", "alerts", "endpoints", "threats", "mcp"],
   "skills": ["./skills/v1-api"]
 }
