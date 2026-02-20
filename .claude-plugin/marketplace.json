@@ -88,6 +88,15 @@
       "author": {
         "name": "grobomo"
       }
+    },
+    {
+      "name": "trend-docs-mcp",
+      "source": "./plugins/trend-docs-mcp",
+      "description": "MCP server for searching and reading Trend Micro documentation. DuckDuckGo search + async Playwright extraction for JS SPA pages.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      }
     }
   ]
 }
