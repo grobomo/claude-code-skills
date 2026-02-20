@@ -13,49 +13,72 @@
       "source": "./plugins/super-manager",
       "description": "Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
     },
     {
       "name": "v1-api",
       "source": "./plugins/v1-api",
       "description": "Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
     },
     {
       "name": "diff-view",
       "source": "./plugins/diff-view",
       "description": "Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
     },
     {
       "name": "hook-manager",
       "source": "./plugins/hook-manager",
       "description": "Create and manage Claude Code hooks - correct schema, all event formats, stdin/stdout contracts, enable/disable/verify. Complete hook knowledge base.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
     },
     {
       "name": "memo-edit",
       "source": "./plugins/memo-edit",
       "description": "Safely edit CLAUDE.md project memos with proper section management.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
     },
     {
       "name": "skill-manager",
       "source": "./plugins/skill-manager",
       "description": "Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
     },
     {
       "name": "credential-manager",
       "source": "./plugins/credential-manager",
       "description": "Store and retrieve API tokens/secrets in OS credential store (Windows Credential Manager / macOS Keychain). GUI popup for zero-friction secure storage.",
       "version": "1.0.0",
-      "author": {"name": "grobomo"}
+      "author": {
+        "name": "grobomo"
+      }
+    },
+    {
+      "name": "trend-docs",
+      "source": "./plugins/trend-docs",
+      "description": "Read Trend Micro documentation from JS SPA pages using Playwright. Auto-installs dependencies.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      }
     }
   ]
 }
