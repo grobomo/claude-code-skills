@@ -1,0 +1,8 @@
+{
+  "name": "hook-manager",
+  "description": "Create and manage Claude Code hooks - correct schema, all event formats, stdin/stdout contracts, enable/disable/verify. Complete hook knowledge base.",
+  "version": "1.0.0",
+  "author": {"name": "grobomo"},
+  "keywords": ["hooks", "automation", "events", "claude-code", "schema", "management"],
+  "skills": ["./skills/hook-manager"]
+}

@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code plugins for security operations, configuration management, and developer productivity",
-    "version": "0.2.0"
+    "version": "0.3.0"
   },
   "plugins": [
     {
@@ -30,9 +30,9 @@
       "author": {"name": "grobomo"}
     },
     {
-      "name": "hook-maker",
-      "source": "./plugins/hook-maker",
-      "description": "Create Claude Code hooks from templates. Generates correct hook schema for all event types.",
+      "name": "hook-manager",
+      "source": "./plugins/hook-manager",
+      "description": "Create and manage Claude Code hooks - correct schema, all event formats, stdin/stdout contracts, enable/disable/verify. Complete hook knowledge base.",
       "version": "1.0.0",
       "author": {"name": "grobomo"}
     },
@@ -47,6 +47,13 @@
       "name": "skill-manager",
       "source": "./plugins/skill-manager",
       "description": "Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance.",
+      "version": "1.0.0",
+      "author": {"name": "grobomo"}
+    },
+    {
+      "name": "credential-manager",
+      "source": "./plugins/credential-manager",
+      "description": "Store and retrieve API tokens/secrets in OS credential store (Windows Credential Manager / macOS Keychain). GUI popup for zero-friction secure storage.",
       "version": "1.0.0",
       "author": {"name": "grobomo"}
     }

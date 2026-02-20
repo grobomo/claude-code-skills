@@ -1,0 +1,63 @@
+name: Update README Plugins Table
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Regenerate plugins table
+        run: |
+          TABLE_ROWS=""
+          for plugin_dir in plugins/*/; do
+            plugin_json="${plugin_dir}.claude-plugin/plugin.json"
+            if [ ! -f "$plugin_json" ]; then
+              continue
+            fi
+
+            # Parse fields from plugin.json using grep/sed (no jq dependency)
+            name=$(grep '"name"' "$plugin_json" | head -1 | sed 's/.*"name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            description=$(grep '"description"' "$plugin_json" | head -1 | sed 's/.*"description"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            version=$(grep '"version"' "$plugin_json" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+
+            if [ -n "$name" ] && [ -n "$version" ]; then
+              TABLE_ROWS="${TABLE_ROWS}| **${name}** | ${description} | ${version} | \`claude plugin install ${name}@grobomo-marketplace\` |\n"
+            fi
+          done
+
+          # Sort rows alphabetically
+          SORTED_ROWS=$(printf "$TABLE_ROWS" | sort -t'|' -k2 -f)
+
+          # Build the full table block
+          TABLE_BLOCK="<!-- PLUGINS_TABLE_START -->\n| Plugin | Description | Version | Install |\n|--------|-------------|---------|---------|"
+          TABLE_BLOCK="${TABLE_BLOCK}\n${SORTED_ROWS}<!-- PLUGINS_TABLE_END -->"
+
+          # Replace the table in README.md
+          # Use awk to replace content between markers
+          awk -v table="$TABLE_BLOCK" '
+            /<!-- PLUGINS_TABLE_START -->/ { found=1; print table; next }
+            /<!-- PLUGINS_TABLE_END -->/ { found=0; next }
+            !found { print }
+          ' README.md > README.md.tmp
+
+          # Expand escaped newlines
+          printf '%b' "$(cat README.md.tmp)" > README.md
+          rm -f README.md.tmp
+
+      - name: Commit and push if changed
+        run: |
+          git diff --quiet README.md && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "docs: auto-update plugins table in README"
+          git push

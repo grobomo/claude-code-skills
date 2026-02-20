@@ -17,12 +17,13 @@ claude plugin install super-manager@grobomo-marketplace --scope user
 <!-- PLUGINS_TABLE_START -->
 | Plugin | Description | Version | Install |
 |--------|-------------|---------|---------|
-| **super-manager** | Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. | 1.0.0 | `claude plugin install super-manager@grobomo-marketplace` |
-| **v1-api** | Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more. | 1.0.0 | `claude plugin install v1-api@grobomo-marketplace` |
+| **credential-manager** | Store and retrieve API tokens/secrets in OS credential store (Windows Credential Manager / macOS Keychain). GUI popup for zero-friction secure storage. | 1.0.0 | `claude plugin install credential-manager@grobomo-marketplace` |
 | **diff-view** | Side-by-side diff viewer with editable right side, resizable panels, synced heights, and merge workflow. | 1.0.0 | `claude plugin install diff-view@grobomo-marketplace` |
-| **hook-maker** | Create Claude Code hooks from templates. Generates correct hook schema for all event types. | 1.0.0 | `claude plugin install hook-maker@grobomo-marketplace` |
+| **hook-manager** | Create and manage Claude Code hooks - correct schema, all event formats, stdin/stdout contracts, enable/disable/verify. Complete hook knowledge base. | 1.0.0 | `claude plugin install hook-manager@grobomo-marketplace` |
 | **memo-edit** | Safely edit CLAUDE.md project memos with proper section management. | 1.0.0 | `claude plugin install memo-edit@grobomo-marketplace` |
 | **skill-manager** | Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance. | 1.0.0 | `claude plugin install skill-manager@grobomo-marketplace` |
+| **super-manager** | Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. | 1.0.0 | `claude plugin install super-manager@grobomo-marketplace` |
+| **v1-api** | Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more. | 1.0.0 | `claude plugin install v1-api@grobomo-marketplace` |
 <!-- PLUGINS_TABLE_END -->
 
 ## Plugin Details
@@ -39,9 +40,13 @@ Full-featured Trend Micro Vision One API wrapper. Covers 280+ operations across 
 
 Launches a local browser-based diff viewer with side-by-side comparison, editable right panel, resizable columns, synced line heights, and a merge workflow for accepting changes.
 
-### hook-maker
+### hook-manager
 
-Generates Claude Code hooks from templates. Supports all hook event types (SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, etc.) with correct JSON schema and helper utilities.
+Create and manage Claude Code hooks with correct schema for all event types. Covers stdin/stdout contracts, matcher rules, Stop hook loop prevention, PreToolUse deny/allow/ask patterns, and management commands (enable/disable/verify). Complete knowledge base for hook development.
+
+### credential-manager
+
+Store and retrieve API tokens/secrets in the OS credential store (Windows Credential Manager / macOS Keychain) instead of plaintext files. GUI popup for secure entry, `.env` migration, and Python/Node.js resolver libraries for `credential:` prefix integration.
 
 ### memo-edit
 
