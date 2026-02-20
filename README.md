@@ -23,6 +23,7 @@ claude plugin install super-manager@grobomo-marketplace --scope user
 | **memo-edit** | Safely edit CLAUDE.md project memos with proper section management. Prevents accidental overwrites and maintains structure. | 1.0.0 | `claude plugin install memo-edit@grobomo-marketplace` |
 | **skill-manager** | Self-installing skill manager with keyword enrichment, hook health checks, and session-start auto-maintenance | 1.0.0 | `claude plugin install skill-manager@grobomo-marketplace` |
 | **super-manager** | Unified manager for all Claude Code configuration - hooks, skills, MCP servers, and instructions. Status dashboard, doctor diagnostics, auto-fix, and duplicate detection. | 1.0.0 | `claude plugin install super-manager@grobomo-marketplace` |
+| **trend-docs** | Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages that WebFetch cannot read. | 1.0.0 | `claude plugin install trend-docs@grobomo-marketplace` |
 | **v1-api** | Trend Micro Vision One API wrapper with 280+ operations. Query alerts, endpoints, threats, cloud security, and more. | 1.0.0 | `claude plugin install v1-api@grobomo-marketplace` |<!-- PLUGINS_TABLE_END -->
 
 ## Plugin Details
