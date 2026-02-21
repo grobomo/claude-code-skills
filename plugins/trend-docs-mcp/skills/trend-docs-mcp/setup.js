@@ -106,10 +106,45 @@ function addToMcpmProject(mcpJsonPath, serverPyPath) {
 }
 
 /**
- * Add server directly to .mcp.json (no mcp-manager)
+ * Add server directly to settings.json mcpServers (user-level config)
+ * Claude Code reads MCP config from settings.json, not ~/.claude/.mcp.json
  */
-function addDirectToMcpJson(serverPyPath) {
-  const mcpJsonPath = path.join(os.homedir(), '.claude', '.mcp.json');
+function addToSettingsJson(serverPyPath) {
+  const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+  const pyPath = serverPyPath.replace(/\\/g, '/');
+
+  let settings = {};
+  try {
+    settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+  } catch {}
+
+  if (!settings.mcpServers) settings.mcpServers = {};
+
+  if (settings.mcpServers[SERVER_NAME]) {
+    log('Already configured in settings.json');
+    return true;
+  }
+
+  settings.mcpServers[SERVER_NAME] = {
+    command: 'python',
+    args: [pyPath],
+    env: { PYTHONIOENCODING: 'utf-8' }
+  };
+
+  // Ensure directory exists
+  const dir = path.dirname(settingsPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf8');
+  log('Added to ' + settingsPath);
+  return true;
+}
+
+/**
+ * Also write to ~/.mcp.json (project-agnostic fallback)
+ */
+function addToHomeMcpJson(serverPyPath) {
+  const mcpJsonPath = path.join(os.homedir(), '.mcp.json');
   const pyPath = serverPyPath.replace(/\\/g, '/');
 
   let content = { mcpServers: {} };
@@ -119,7 +154,7 @@ function addDirectToMcpJson(serverPyPath) {
   } catch {}
 
   if (content.mcpServers[SERVER_NAME]) {
-    log('Already configured in ' + mcpJsonPath);
+    log('Already in ' + mcpJsonPath);
     return true;
   }
 
@@ -129,12 +164,8 @@ function addDirectToMcpJson(serverPyPath) {
     env: { PYTHONIOENCODING: 'utf-8' }
   };
 
-  // Ensure directory exists
-  const dir = path.dirname(mcpJsonPath);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
   fs.writeFileSync(mcpJsonPath, JSON.stringify(content, null, 2) + '\n', 'utf8');
-  log('Added directly to ' + mcpJsonPath);
+  log('Added to ' + mcpJsonPath);
   return true;
 }
 
@@ -233,19 +264,22 @@ function main() {
     return;
   }
 
-  // 4. No mcpm at all - add directly to ~/.claude/.mcp.json
+  // 4. No mcpm at all - add to settings.json + ~/.mcp.json
   log('No mcp-manager found, configuring directly...');
-  if (addDirectToMcpJson(serverPy)) {
+  let ok = false;
+  ok = addToSettingsJson(serverPy) || ok;
+  ok = addToHomeMcpJson(serverPy) || ok;
+  if (ok) {
     log('Done! Restart Claude Code session to activate.');
     return;
   }
 
   warn('Setup failed. Manual config required.');
-  warn('Add to .mcp.json: {"trend-docs": {"command": "python", "args": ["' + serverPy.replace(/\\/g, '/') + '"]}}');
+  warn('Add to settings.json mcpServers: {"trend-docs": {"command": "python", "args": ["' + serverPy.replace(/\\/g, '/') + '"]}}');
   process.exit(1);
 }
 
-module.exports = { main, findServerPy, hasMcpm, hasMcpmMcp };
+module.exports = { main, findServerPy, hasMcpm, hasMcpmMcp, addToSettingsJson, addToHomeMcpJson };
 
 if (require.main === module) {
   main();
