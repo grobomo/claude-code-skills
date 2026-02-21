@@ -18,9 +18,44 @@ const { execSync } = require('child_process');
 
 const SERVER_NAME = 'trend-docs';
 const DESCRIPTION = 'Search and read Trend Micro docs (JS SPA pages via Playwright)';
+const REQUIRED_PACKAGES = ['mcp', 'ddgs', 'playwright'];
 
 function log(msg) { console.log('[trend-docs-mcp:setup] ' + msg); }
 function warn(msg) { console.warn('[trend-docs-mcp:setup:warn] ' + msg); }
+
+/**
+ * Install Python dependencies required by server.py
+ */
+function installDeps() {
+  for (const pkg of REQUIRED_PACKAGES) {
+    try {
+      execSync(`python -c "import ${pkg === 'mcp' ? 'mcp.server.fastmcp' : pkg}"`, { stdio: 'pipe', timeout: 10000 });
+      log(pkg + ': already installed');
+    } catch {
+      log(pkg + ': installing...');
+      try {
+        execSync(`python -m pip install ${pkg} -q`, { stdio: 'pipe', timeout: 120000 });
+        log(pkg + ': installed');
+      } catch (e) {
+        warn(pkg + ': install failed - ' + e.message);
+      }
+    }
+  }
+
+  // Playwright needs chromium browser
+  try {
+    execSync('python -c "from playwright.sync_api import sync_playwright"', { stdio: 'pipe', timeout: 10000 });
+    log('playwright chromium: checking...');
+    try {
+      execSync('python -m playwright install chromium', { stdio: 'pipe', timeout: 120000 });
+      log('playwright chromium: ready');
+    } catch (e) {
+      warn('playwright chromium install failed - will auto-install on first use');
+    }
+  } catch {
+    // playwright not installed yet, will be handled by server.py auto-install
+  }
+}
 
 /**
  * Find server.py - it's in the same directory as this setup.js
@@ -234,6 +269,10 @@ function ensureServersYaml(serverPyPath) {
 
 function main() {
   log('Setting up trend-docs MCP server...');
+
+  // 0. Install Python dependencies
+  log('Checking Python dependencies...');
+  installDeps();
 
   // 1. Find server.py
   const serverPy = findServerPy();
