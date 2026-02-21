@@ -1,0 +1,252 @@
+#!/usr/bin/env node
+/**
+ * trend-docs-mcp setup
+ * Auto-configures the MCP server on plugin install.
+ *
+ * Strategy:
+ *   1. Find the installed server.py path (same directory as this script)
+ *   2. If mcpm available: use mcpm to add the server
+ *   3. If no mcpm: add directly to ~/.claude/.mcp.json
+ *
+ * Pure Node.js (fs, path, os, child_process) - no npm dependencies.
+ */
+
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { execSync } = require('child_process');
+
+const SERVER_NAME = 'trend-docs';
+const DESCRIPTION = 'Search and read Trend Micro docs (JS SPA pages via Playwright)';
+
+function log(msg) { console.log('[trend-docs-mcp:setup] ' + msg); }
+function warn(msg) { console.warn('[trend-docs-mcp:setup:warn] ' + msg); }
+
+/**
+ * Find server.py - it's in the same directory as this setup.js
+ */
+function findServerPy() {
+  const serverPy = path.join(__dirname, 'server.py');
+  if (fs.existsSync(serverPy)) return serverPy;
+  return null;
+}
+
+/**
+ * Check if mcpm CLI is available
+ */
+function hasMcpm() {
+  try {
+    execSync('mcpm --version', { stdio: 'pipe', timeout: 5000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if mcpm MCP server is configured (in any .mcp.json)
+ */
+function hasMcpmMcp() {
+  const locations = [
+    path.join(process.cwd(), '.mcp.json'),
+    path.join(os.homedir(), '.claude', '.mcp.json'),
+    path.join(os.homedir(), '.mcp.json'),
+  ];
+  for (const loc of locations) {
+    try {
+      const content = JSON.parse(fs.readFileSync(loc, 'utf8'));
+      if (content.mcpServers && content.mcpServers['mcp-manager']) return loc;
+    } catch {}
+  }
+  return null;
+}
+
+/**
+ * Add server via mcpm CLI
+ */
+function addViaMcpm(serverPyPath) {
+  const pyPath = serverPyPath.replace(/\\/g, '/');
+  try {
+    execSync(
+      `mcpm add ${SERVER_NAME} --command=python --args='["${pyPath}"]' --description="${DESCRIPTION}"`,
+      { stdio: 'pipe', timeout: 10000 }
+    );
+    log('Added via mcpm');
+    return true;
+  } catch (e) {
+    warn('mcpm add failed: ' + e.message);
+    return false;
+  }
+}
+
+/**
+ * Add server to .mcp.json that has mcp-manager (append to servers list)
+ */
+function addToMcpmProject(mcpJsonPath, serverPyPath) {
+  try {
+    const content = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8'));
+    const mgr = content.mcpServers['mcp-manager'];
+
+    if (!mgr.servers) mgr.servers = [];
+
+    if (mgr.servers.includes(SERVER_NAME)) {
+      log('Already in mcp-manager servers list: ' + mcpJsonPath);
+      return true;
+    }
+
+    mgr.servers.push(SERVER_NAME);
+    fs.writeFileSync(mcpJsonPath, JSON.stringify(content, null, 2) + '\n', 'utf8');
+    log('Added to mcp-manager servers list: ' + mcpJsonPath);
+    log('NOTE: Also add trend-docs entry to servers.yaml for mcp-manager to find it');
+    return true;
+  } catch (e) {
+    warn('Failed to update ' + mcpJsonPath + ': ' + e.message);
+    return false;
+  }
+}
+
+/**
+ * Add server directly to .mcp.json (no mcp-manager)
+ */
+function addDirectToMcpJson(serverPyPath) {
+  const mcpJsonPath = path.join(os.homedir(), '.claude', '.mcp.json');
+  const pyPath = serverPyPath.replace(/\\/g, '/');
+
+  let content = { mcpServers: {} };
+  try {
+    content = JSON.parse(fs.readFileSync(mcpJsonPath, 'utf8'));
+    if (!content.mcpServers) content.mcpServers = {};
+  } catch {}
+
+  if (content.mcpServers[SERVER_NAME]) {
+    log('Already configured in ' + mcpJsonPath);
+    return true;
+  }
+
+  content.mcpServers[SERVER_NAME] = {
+    command: 'python',
+    args: [pyPath],
+    env: { PYTHONIOENCODING: 'utf-8' }
+  };
+
+  // Ensure directory exists
+  const dir = path.dirname(mcpJsonPath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  fs.writeFileSync(mcpJsonPath, JSON.stringify(content, null, 2) + '\n', 'utf8');
+  log('Added directly to ' + mcpJsonPath);
+  return true;
+}
+
+/**
+ * If mcp-manager exists, ensure servers.yaml has the trend-docs entry
+ */
+function ensureServersYaml(serverPyPath) {
+  // Search common locations for servers.yaml
+  const candidates = [
+    path.join(os.homedir(), '.claude', 'servers.yaml'),
+    path.join(os.homedir(), 'servers.yaml'),
+  ];
+
+  // Also check MCPM_PROJECT_PATH env
+  if (process.env.MCPM_PROJECT_PATH) {
+    candidates.unshift(path.join(process.env.MCPM_PROJECT_PATH, '..', 'MCP', 'mcp-manager', 'servers.yaml'));
+  }
+
+  for (const yamlPath of candidates) {
+    if (!fs.existsSync(yamlPath)) continue;
+
+    try {
+      const content = fs.readFileSync(yamlPath, 'utf8');
+      if (content.includes('trend-docs:')) {
+        log('trend-docs already in servers.yaml: ' + yamlPath);
+        return true;
+      }
+
+      // Append trend-docs entry before 'defaults:' section or at end of servers block
+      const pyPath = serverPyPath.replace(/\\/g, '/');
+      const entry = `  trend-docs:
+    command: python
+    args:
+      - ${pyPath}
+    description: ${DESCRIPTION}
+    env:
+      PYTHONIOENCODING: utf-8
+    enabled: true
+    auto_start: false
+    tags:
+      - docs
+      - trend-micro
+    keywords:
+      - trend docs
+      - documentation
+      - trendmicro
+`;
+
+      // Insert before 'defaults:' line if it exists
+      if (content.includes('\ndefaults:')) {
+        const updated = content.replace('\ndefaults:', '\n' + entry + 'defaults:');
+        fs.writeFileSync(yamlPath, updated, 'utf8');
+      } else {
+        fs.writeFileSync(yamlPath, content + '\n' + entry, 'utf8');
+      }
+
+      log('Added trend-docs to servers.yaml: ' + yamlPath);
+      return true;
+    } catch (e) {
+      warn('Failed to update servers.yaml: ' + e.message);
+    }
+  }
+
+  return false;
+}
+
+function main() {
+  log('Setting up trend-docs MCP server...');
+
+  // 1. Find server.py
+  const serverPy = findServerPy();
+  if (!serverPy) {
+    warn('server.py not found in ' + __dirname);
+    warn('Manual setup required: add trend-docs to .mcp.json');
+    process.exit(1);
+  }
+  log('Server: ' + serverPy);
+
+  // 2. Try mcpm CLI first
+  if (hasMcpm()) {
+    log('mcpm CLI found, adding via mcpm...');
+    if (addViaMcpm(serverPy)) {
+      log('Done! Server will be available after mcpm reload or session restart.');
+      return;
+    }
+    // Fall through if mcpm add failed
+  }
+
+  // 3. Check if mcp-manager is configured in any .mcp.json
+  const mcpmProject = hasMcpmMcp();
+  if (mcpmProject) {
+    log('mcp-manager found in ' + mcpmProject);
+    addToMcpmProject(mcpmProject, serverPy);
+    ensureServersYaml(serverPy);
+    log('Done! Run "mcpm reload" or restart session to activate.');
+    return;
+  }
+
+  // 4. No mcpm at all - add directly to ~/.claude/.mcp.json
+  log('No mcp-manager found, configuring directly...');
+  if (addDirectToMcpJson(serverPy)) {
+    log('Done! Restart Claude Code session to activate.');
+    return;
+  }
+
+  warn('Setup failed. Manual config required.');
+  warn('Add to .mcp.json: {"trend-docs": {"command": "python", "args": ["' + serverPy.replace(/\\/g, '/') + '"]}}');
+  process.exit(1);
+}
+
+module.exports = { main, findServerPy, hasMcpm, hasMcpmMcp };
+
+if (require.main === module) {
+  main();
+}
