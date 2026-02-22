@@ -1,6 +1,8 @@
 # mcp-manager
 
-Dynamic MCP server proxy router. All MCP servers go through a single `mcp-manager` entry in `.mcp.json`. Servers are defined in `servers.yaml` and proxied at runtime.
+One process to manage all your MCP servers. No more config sprawl.
+
+---
 
 ## Install
 
@@ -14,46 +16,171 @@ After install, tell Claude to run setup (or it runs automatically on first skill
 setup mcp-manager
 ```
 
-## Features
+---
 
-- **Single entry point**: Only `mcp-manager` in `.mcp.json` - all other servers proxied through it
-- **stdio + HTTP/SSE**: Local process servers and remote HTTP servers with custom headers
-- **Hot reload**: Change `servers.yaml`, run `mcpm reload` - no restart needed
-- **Auto-start**: Servers in project `.mcp.json` `servers` list start on session connect
-- **Idle timeout**: Unused servers auto-stop after configurable timeout
-- **Server discovery**: Scan for unregistered MCP servers in common locations
-- **Auto-instructions**: Creates Claude instruction files on first startup
+## The Problem
 
-## Quick Start
+Without mcpm, every MCP server is a separate entry in `.mcp.json`. They all start on session connect, you cannot start or stop them mid-session, and adding a server means editing JSON and restarting Claude.
+
+### Before: Default `/mcp` (N entries)
+
+```jsonc
+// .mcp.json -- one entry per server
+{
+  "mcpServers": {
+    "wiki-lite":    { "command": "python", "args": ["wiki-lite/server.py"] },
+    "v1-lite":      { "command": "python", "args": ["v1-lite/server.py"] },
+    "trend-docs":   { "command": "python", "args": ["trend-docs/server.py"] },
+    "blueprint":    { "command": "npx", "args": ["@anthropic/blueprint"] },
+    "winremote":    { "url": "http://remote:8080/mcp" }
+  }
+}
+```
+
+Problems:
+- Every server starts on session connect (even unused ones)
+- Cannot start/stop servers mid-session
+- Config scattered across project `.mcp.json` files
+- Adding a server = edit JSON, restart Claude
+- No idle timeout -- all running, all the time
+
+### After: With mcpm (1 entry)
+
+```jsonc
+// .mcp.json -- only mcpm
+{
+  "mcpServers": {
+    "mcp-manager": {
+      "command": "node",
+      "args": ["build/index.js"],
+      "servers": ["wiki-lite", "v1-lite", "trend-docs", "winremote"]
+    }
+  }
+}
+```
+
+Benefits:
+- Servers start **on demand** (`mcpm start wiki-lite`)
+- Start/stop/restart **mid-session** without restarting Claude
+- Central registry: **servers.yaml** (shared across projects)
+- Hot reload: **`mcpm reload`** picks up config changes
+- Auto-stop idle servers after timeout
+
+---
+
+## How It Works
+
+mcpm is a **transparent proxy**. Claude sees only "mcpm" in its tool list. When Claude calls a backend tool, mcpm forwards the request to the right server and passes the result back. Claude never talks to backend servers directly.
 
 ```
-mcpm list_servers          # See all servers
-mcpm start my-server       # Start a server
-mcpm call my-server tool   # Call a tool
-mcpm add new-server ...    # Register a server
-mcpm reload                # Reload config
++-------------+   stdio    +------------------+   stdio or HTTP   +--------------+
+|             | ---------> |                  | ----------------> |              |
+| Claude Code |  JSON-RPC  |  mcpm process    |   (auto-detect)   |  wiki-lite   |
+|             | <--------- |                  | <---------------- |              |
++-------------+            | Looks up server  |                   | Runs the tool|
+                           | in RUNNING map.  |                   | Returns result|
+                           | Forwards call.   |                   |              |
+                           +------------------+                   +--------------+
 ```
 
-## Server Types
+Example: Claude calls `mcpm call wiki-lite search_pages {"query":"..."}` and mcpm forwards it to wiki-lite's stdin. The result passes back through mcpm to Claude.
 
-**Local (stdio):**
+### stdio servers (local)
+
+- mcpm **spawns** a child process
+- Communicates via **stdin/stdout** pipes
+- **Kills** process on stop
+- Configured with `command` + `args` in servers.yaml
+
+### HTTP servers (remote)
+
+- mcpm sends **HTTP POST** requests
+- Handles **SSE responses** + session IDs
+- Custom **headers** (Bearer auth)
+- Configured with `url` + `headers` in servers.yaml
+
+---
+
+## Files
+
+| File | Role | Location |
+|------|------|----------|
+| `servers.yaml` | Central Server Registry | Next to mcpm's `index.js` |
+| `.mcp.json` | Project Server List | Each project root |
+| `capabilities-cache.yaml` | Tool Cache | Next to mcpm's `index.js` |
+
+### servers.yaml -- Central Server Registry
+
+Every server you can use is defined here: name, command/url, description, tags, keywords. Shared across all projects. Edit this to add, remove, or configure servers.
+
 ```yaml
-my-server:
+wiki-lite:
   command: python
-  args: [path/to/server.py]
-  description: My local server
+  args: [path/to/wiki-lite/server.py]
+  description: Confluence wiki API
   enabled: true
-```
 
-**Remote (HTTP/SSE):**
-```yaml
-my-remote:
-  url: http://host:port/mcp
+winremote:
+  url: http://remote:8080/mcp
   headers:
     Authorization: Bearer TOKEN
-  description: Remote server
+  description: Remote server over HTTP
   enabled: true
 ```
+
+`mcpm reload` re-reads this file without restarting anything.
+
+### .mcp.json -- Project Server List
+
+Lives in each project root. Contains **only mcpm itself** plus a `servers` array of names. The `servers` list controls which servers **auto-start** when you open this project. Never put direct server entries here -- only mcpm.
+
+```jsonc
+{
+  "mcpServers": {
+    "mcp-manager": {
+      "command": "node",
+      "args": ["build/index.js"],
+      "servers": ["wiki-lite", "v1-lite"]
+    }
+  }
+}
+```
+
+### capabilities-cache.yaml -- Tool Cache
+
+Auto-generated by mcpm. Caches each server's **tool list** so mcpm can answer `search` and `tools` queries even when servers are stopped. Updated every time a server starts. Safe to delete (regenerated automatically).
+
+---
+
+## Why Use mcpm
+
+| | Benefit | Description |
+|-|---------|-------------|
+| `[*]` | **On-Demand Start** | Servers start when needed, not all at once. Saves memory and startup time. |
+| `{~}` | **Hot Reload** | Change `servers.yaml`, run `mcpm reload`. No Claude restart needed. |
+| `[z]` | **Idle Timeout** | Unused servers auto-stop after 5 min. Resources freed automatically. |
+| `<->` | **HTTP Proxy** | Remote MCP servers over HTTP/SSE. Auth headers, session IDs, SSE parsing built in. |
+
+---
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `mcpm list_servers` | See all servers + running/stopped status |
+| `mcpm start wiki-lite` | Start a server (spawns process or connects HTTP) |
+| `mcpm stop wiki-lite` | Stop a running server |
+| `mcpm reload` | Re-read servers.yaml without restart |
+| `mcpm call wiki-lite search ...` | Call a tool on a backend server |
+| `mcpm tools wiki-lite` | List tools available on a server |
+| `mcpm add my-server --command=...` | Register a new server in servers.yaml |
+| `mcpm search "wiki"` | Search servers + tools by keyword |
+| `mcpm discover` | Scan for unregistered MCP servers nearby |
+| `mcpm status` | System health, memory usage, uptime |
+
+**To reload after code changes:** `/mcp` --> select mcp-manager --> Reconnect. This restarts the mcpm process with the latest build. Then `mcpm reload` for servers.yaml changes.
+
+---
 
 ## Part of super-manager
 
