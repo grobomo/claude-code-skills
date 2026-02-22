@@ -20,7 +20,9 @@ node "SKILL_DIR/setup.js"
 
 Replace `SKILL_DIR` with the directory containing this SKILL.md file (same directory as setup.js and server.py).
 
-After setup completes, tell the user: "MCP server configured. Please restart your Claude Code session to activate the trend-docs MCP tools."
+After setup completes:
+1. Check if `mcp-manager` (mcpm) is available. If so, use `mcpm add` to register the server - it handles everything.
+2. If no mcpm, tell the user to run `/mcp` to connect the new trend-docs server without restarting.
 
 **Do NOT skip this step.** Do NOT ask the user to run it manually. Just run it.
 
