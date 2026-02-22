@@ -1,6 +1,21 @@
 {
   "name": "mcp-manager",
-  "version": "1.0.0",
-  "description": "Manage MCP servers - list, enable, disable, start, stop, reload. Configuration and lifecycle management.",
-  "parent": "super-manager"
+  "version": "2.0.0",
+  "description": "Dynamic MCP server proxy router - manage, start, stop, and proxy all MCP servers through a single entry point. Supports stdio and HTTP/SSE transports.",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "mcp",
+    "server",
+    "proxy",
+    "manager",
+    "start",
+    "stop",
+    "reload",
+    "mcpm"
+  ],
+  "skills": [
+    "./skills/mcp-manager"
+  ]
 }

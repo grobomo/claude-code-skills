@@ -1,0 +1,56 @@
+servers:
+  sequential-thinking: &seq-think
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-sequential-thinking"
+    description: Structured problem-solving - breaks complex tasks into logical steps
+    enabled: true
+    auto_start: false
+    tags:
+      - logic
+      - planning
+
+  example-python:
+    sequential-thinking: *seq-think
+    description: Example Python MCP server
+    command: python
+    args:
+      - path/to/server.py
+    enabled: false
+    auto_start: false
+    idle_timeout: 300000
+    startup_delay: 5000
+    tags:
+      - example
+
+  example-node:
+    sequential-thinking: *seq-think
+    description: Example Node.js MCP server
+    command: node
+    args:
+      - path/to/server.js
+    enabled: false
+    auto_start: false
+    idle_timeout: 300000
+    startup_delay: 3000
+    tags:
+      - example
+
+  example-remote:
+    sequential-thinking: *seq-think
+    description: Example remote HTTP MCP server
+    url: https://api.example.com/mcp
+    headers:
+      Authorization: Bearer YOUR_TOKEN_HERE
+    enabled: false
+    auto_start: false
+    idle_timeout: 300000
+    tags:
+      - remote
+      - http
+
+defaults:
+  timeout: 30000
+  retry_count: 3
+  health_check_interval: 60

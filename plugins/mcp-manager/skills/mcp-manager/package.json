@@ -1,0 +1,15 @@
+{
+  "name": "mcp-manager",
+  "version": "2.0.0",
+  "description": "Dynamic MCP Server Proxy Router",
+  "main": "build/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node build/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.1",
+    "yaml": "^2.8.2",
+    "zod": "^3.25.76"
+  }
+}

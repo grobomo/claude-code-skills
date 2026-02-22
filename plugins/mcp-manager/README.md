@@ -1,8 +1,6 @@
 # mcp-manager
 
-Manage MCP servers - list, enable, disable, start, stop, reload. Configuration and lifecycle management.
-
-> Part of [**super-manager**](https://github.com/grobomo/claude-code-skills/tree/main/plugins/super-manager). Installed automatically with super-manager, or independently.
+Dynamic MCP server proxy router. All MCP servers go through a single `mcp-manager` entry in `.mcp.json`. Servers are defined in `servers.yaml` and proxied at runtime.
 
 ## Install
 
@@ -11,53 +9,52 @@ claude plugin marketplace add grobomo/claude-code-skills
 claude plugin install mcp-manager@grobomo-marketplace --scope user
 ```
 
-Manage MCP server configuration and lifecycle. Part of super-manager.
-
-## Commands
-
-```bash
-# List all servers from servers.yaml
-python ~/.claude/super-manager/super_manager.py mcp list
-
-# Enable/disable a server
-python ~/.claude/super-manager/super_manager.py mcp enable SERVER_NAME
-python ~/.claude/super-manager/super_manager.py mcp disable SERVER_NAME
-
-# Verify all servers healthy
-python ~/.claude/super-manager/super_manager.py mcp verify
-
-# Start/stop/reload (lifecycle via mcpm)
-python ~/.claude/super-manager/super_manager.py mcp start SERVER_NAME
-python ~/.claude/super-manager/super_manager.py mcp stop SERVER_NAME
-python ~/.claude/super-manager/super_manager.py mcp reload
+After install, tell Claude to run setup (or it runs automatically on first skill load):
+```
+setup mcp-manager
 ```
 
-## Also Available via MCP Manager Tool
+## Features
 
-The `mcp-manager` MCP server (mcpm) provides the same operations as MCP tool calls:
+- **Single entry point**: Only `mcp-manager` in `.mcp.json` - all other servers proxied through it
+- **stdio + HTTP/SSE**: Local process servers and remote HTTP servers with custom headers
+- **Hot reload**: Change `servers.yaml`, run `mcpm reload` - no restart needed
+- **Auto-start**: Servers in project `.mcp.json` `servers` list start on session connect
+- **Idle timeout**: Unused servers auto-stop after configurable timeout
+- **Server discovery**: Scan for unregistered MCP servers in common locations
+- **Auto-instructions**: Creates Claude instruction files on first startup
 
-```
-mcpm list_servers       # List all servers and status
-mcpm start SERVER       # Start a server
-mcpm stop SERVER        # Stop a server
-mcpm reload             # Hot reload configs
-```
-
-## Configuration
-
-**Central registry:** `servers.yaml` (searched in multiple locations)
-**Project servers:** `.mcp.json` in project root
-
-## Architecture
+## Quick Start
 
 ```
-~/.claude/super-manager/managers/
-└── mcp_server_manager.py    # Config-only (servers.yaml read/write)
-
-Lifecycle (start/stop/reload) delegated to mcpm subprocess.
-PID tracking: ~/.claude/super-manager/logs/server-pids.json
+mcpm list_servers          # See all servers
+mcpm start my-server       # Start a server
+mcpm call my-server tool   # Call a tool
+mcpm add new-server ...    # Register a server
+mcpm reload                # Reload config
 ```
 
-## Dependency
+## Server Types
 
-Part of **super-manager** (`~/.claude/super-manager/`).
+**Local (stdio):**
+```yaml
+my-server:
+  command: python
+  args: [path/to/server.py]
+  description: My local server
+  enabled: true
+```
+
+**Remote (HTTP/SSE):**
+```yaml
+my-remote:
+  url: http://host:port/mcp
+  headers:
+    Authorization: Bearer TOKEN
+  description: Remote server
+  enabled: true
+```
+
+## Part of super-manager
+
+Can be used standalone or as part of [super-manager](https://github.com/grobomo/claude-code-skills/tree/main/plugins/super-manager).

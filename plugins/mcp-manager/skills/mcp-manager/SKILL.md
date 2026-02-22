@@ -1,8 +1,6 @@
 ---
-
-
 name: mcp-manager
-description: "Manage MCP servers - list, enable, disable, start, stop, reload. Part of super-manager."
+description: "Dynamic MCP server proxy router - manage, start, stop, and proxy all MCP servers through a single entry point."
 keywords:
   - mcp
   - server
@@ -10,59 +8,87 @@ keywords:
   - start
   - stop
   - reload
-  - yaml
-
+  - mcpm
 ---
 
-# MCP Manager
+# MCP Manager (mcpm)
 
-Manage MCP server configuration and lifecycle. Part of super-manager.
+Dynamic MCP server proxy router. All MCP servers go through mcpm - single entry in .mcp.json, servers defined in servers.yaml.
 
-## Commands
+## Auto-Setup (REQUIRED on first load)
+
+**Before using mcpm tools, check if they are available.** If `mcpm` tool is NOT listed in your available MCP tools, run setup automatically:
 
 ```bash
-# List all servers from servers.yaml
-python ~/.claude/super-manager/super_manager.py mcp list
-
-# Enable/disable a server
-python ~/.claude/super-manager/super_manager.py mcp enable SERVER_NAME
-python ~/.claude/super-manager/super_manager.py mcp disable SERVER_NAME
-
-# Verify all servers healthy
-python ~/.claude/super-manager/super_manager.py mcp verify
-
-# Start/stop/reload (lifecycle via mcpm)
-python ~/.claude/super-manager/super_manager.py mcp start SERVER_NAME
-python ~/.claude/super-manager/super_manager.py mcp stop SERVER_NAME
-python ~/.claude/super-manager/super_manager.py mcp reload
+node "SKILL_DIR/setup.js"
 ```
 
-## Also Available via MCP Manager Tool
+Replace `SKILL_DIR` with the directory containing this SKILL.md file.
 
-The `mcp-manager` MCP server (mcpm) provides the same operations as MCP tool calls:
+After setup completes:
+1. Tell the user to run `/mcp` -> select mcp-manager -> Connect
+2. Verify with `mcpm list_servers`
 
+**Do NOT skip this step.** Do NOT ask the user to run it manually. Just run it.
+
+## MCP Tools (available after setup)
+
+| Tool | Purpose |
+|------|---------|
+| `mcpm list_servers` | List all servers and status |
+| `mcpm start SERVER` | Start a server (stdio or HTTP) |
+| `mcpm stop SERVER` | Stop a running server |
+| `mcpm restart SERVER` | Restart a server |
+| `mcpm reload` | Hot reload servers.yaml config |
+| `mcpm search QUERY` | Search servers and tools |
+| `mcpm details SERVER` | Full info on one server |
+| `mcpm tools [SERVER]` | List available tools |
+| `mcpm call SERVER TOOL [ARGS]` | Execute a tool on a backend server |
+| `mcpm add SERVER ...` | Register a new server |
+| `mcpm remove SERVER` | Remove a server |
+| `mcpm enable SERVER` | Enable/disable a server |
+| `mcpm status` | System health and memory |
+| `mcpm discover` | Scan for unregistered servers |
+
+## Server Types
+
+### stdio (local process)
+```yaml
+my-server:
+  command: python
+  args:
+    - path/to/server.py
+  description: My local MCP server
+  enabled: true
+  auto_start: false
 ```
-mcpm list_servers       # List all servers and status
-mcpm start SERVER       # Start a server
-mcpm stop SERVER        # Stop a server
-mcpm reload             # Hot reload configs
+
+### HTTP/SSE (remote)
+```yaml
+my-remote:
+  url: http://host:port/mcp
+  headers:
+    Authorization: Bearer TOKEN
+  description: Remote MCP server
+  enabled: true
+  auto_start: false
 ```
 
 ## Configuration
 
-**Central registry:** `servers.yaml` (searched in multiple locations)
-**Project servers:** `.mcp.json` in project root
+- **servers.yaml**: Central registry (same directory as build/index.js)
+- **.mcp.json**: Project server list (names only, in `servers` array)
 
-## Architecture
+## Reload Flow
 
-```
-~/.claude/super-manager/managers/
-└── mcp_server_manager.py    # Config-only (servers.yaml read/write)
+When config changes, tell user:
+1. `/mcp` -> select mcp-manager -> Reconnect
+2. `mcpm reload` (picks up servers.yaml changes)
 
-Lifecycle (start/stop/reload) delegated to mcpm subprocess.
-PID tracking: ~/.claude/super-manager/logs/server-pids.json
-```
+**NEVER** tell user to restart Claude Code for mcpm changes.
 
-## Dependency
+## Rules
 
-Part of **super-manager** (`~/.claude/super-manager/`).
+- **Only mcpm in .mcp.json** - never add direct MCP server entries
+- All servers (stdio + HTTP) go through mcpm
+- HTTP servers: `url` + `headers` in servers.yaml
