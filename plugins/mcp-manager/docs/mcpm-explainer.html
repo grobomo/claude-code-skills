@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>mcpm Explainer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0d1117; color: #e6edf3; padding: 32px 40px; }
+  h1 { text-align: center; font-size: 26px; color: #58a6ff; margin-bottom: 6px; }
+  .tagline { text-align: center; color: #8b949e; font-size: 14px; margin-bottom: 36px; }
+  .panel { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 24px 28px; margin-bottom: 28px; }
+  .panel-title { font-size: 16px; color: #58a6ff; font-weight: 700; margin-bottom: 16px; letter-spacing: 0.5px; }
+  .panel-title span { color: #8b949e; font-weight: 400; font-size: 13px; margin-left: 8px; }
+
+  /* ---- PANEL 1: Before/After comparison ---- */
+  .compare { display: grid; grid-template-columns: 1fr 40px 1fr; gap: 0; align-items: start; }
+  .side { padding: 16px; border-radius: 8px; }
+  .side.before { background: #1c1008; border: 1px solid #6e3a00; }
+  .side.after { background: #0d1a12; border: 1px solid #238636; }
+  .side h3 { font-size: 14px; margin-bottom: 12px; }
+  .side.before h3 { color: #d29922; }
+  .side.after h3 { color: #3fb950; }
+  .vs { text-align: center; align-self: center; color: #484f58; font-size: 14px; font-weight: 700; }
+  .file-block { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; font-family: 'Cascadia Code', 'Fira Code', monospace; font-size: 11.5px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+  .comment { color: #484f58; }
+  .key { color: #ff7b72; }
+  .str { color: #a5d6ff; }
+  .callout { font-size: 12px; color: #8b949e; margin-top: 8px; line-height: 1.5; }
+  .callout strong { color: #e6edf3; }
+  .bad { color: #f85149; }
+  .good { color: #3fb950; }
+
+  /* ---- PANEL 2: Flow diagram ---- */
+  .flow-row { display: flex; align-items: center; gap: 0; justify-content: center; flex-wrap: nowrap; }
+  .flow-box { border: 2px solid; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 110px; flex-shrink: 0; }
+  .flow-box .label { font-size: 13px; font-weight: 700; }
+  .flow-box .detail { font-size: 10px; color: #8b949e; margin-top: 3px; line-height: 1.3; }
+  .flow-box.claude { border-color: #da7756; }
+  .flow-box.claude .label { color: #da7756; }
+  .flow-box.mcpm { border-color: #58a6ff; background: #0d1926; }
+  .flow-box.mcpm .label { color: #58a6ff; }
+  .flow-box.backend { border-color: #3fb950; }
+  .flow-box.backend .label { color: #3fb950; }
+  .flow-box.http { border-color: #d29922; }
+  .flow-box.http .label { color: #d29922; }
+  .flow-arrow { color: #484f58; font-size: 12px; padding: 0 6px; text-align: center; flex-shrink: 0; min-width: 60px; }
+  .flow-arrow .arrow { font-size: 18px; display: block; }
+  .flow-arrow .lbl { font-size: 10px; color: #8b949e; }
+
+  /* ---- PANEL 3: File map ---- */
+  .file-map { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .file-card { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; }
+  .file-card h4 { font-size: 13px; color: #8957e5; margin-bottom: 6px; font-family: monospace; }
+  .file-card p { font-size: 11.5px; color: #8b949e; line-height: 1.5; }
+  .file-card .role { color: #e6edf3; font-weight: 600; display: block; margin-bottom: 4px; font-size: 12px; }
+  .file-card code { background: #21262d; padding: 1px 5px; border-radius: 3px; font-size: 11px; color: #c9d1d9; }
+
+  /* ---- PANEL 4: Why use it ---- */
+  .benefits { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .benefit { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 14px; text-align: center; }
+  .benefit .icon { font-size: 22px; color: #58a6ff; margin-bottom: 6px; font-family: monospace; }
+  .benefit h4 { font-size: 12px; color: #e6edf3; margin-bottom: 4px; }
+  .benefit p { font-size: 11px; color: #8b949e; line-height: 1.4; }
+
+  /* ---- PANEL 5: Commands ---- */
+  .cmd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cmd { display: flex; gap: 12px; align-items: baseline; padding: 6px 0; }
+  .cmd code { font-family: 'Cascadia Code', monospace; font-size: 12px; color: #79c0ff; white-space: nowrap; min-width: 240px; }
+  .cmd .desc { font-size: 11.5px; color: #8b949e; }
+</style>
+</head>
+<body>
+
+<h1>mcpm -- Why It Exists and How It Works</h1>
+<p class="tagline">One process to manage all your MCP servers. No more config sprawl.</p>
+
+<!-- ============ PANEL 1: The Problem ============ -->
+<div class="panel">
+  <div class="panel-title">THE PROBLEM <span>What happens without mcpm</span></div>
+  <div class="compare">
+    <div class="side before">
+      <h3>Default /mcp (N entries)</h3>
+      <div class="file-block"><span class="comment">// .mcp.json -- one entry per server</span>
+{
+  <span class="key">"mcpServers"</span>: {
+    <span class="str">"wiki-lite"</span>:    { <span class="key">"command"</span>: <span class="str">"python"</span>, ... },
+    <span class="str">"v1-lite"</span>:      { <span class="key">"command"</span>: <span class="str">"python"</span>, ... },
+    <span class="str">"trend-docs"</span>:   { <span class="key">"command"</span>: <span class="str">"python"</span>, ... },
+    <span class="str">"blueprint"</span>:    { <span class="key">"command"</span>: <span class="str">"npx"</span>, ... },
+    <span class="str">"winremote"</span>:    { <span class="key">"url"</span>: <span class="str">"http://..."</span>, ... }
+  }
+}</div>
+      <div class="callout">
+        <span class="bad">x</span> Every server starts on session connect (even unused ones)<br>
+        <span class="bad">x</span> Can't start/stop servers mid-session<br>
+        <span class="bad">x</span> Config scattered across project .mcp.json files<br>
+        <span class="bad">x</span> Adding a server = edit JSON, restart Claude<br>
+        <span class="bad">x</span> No idle timeout -- all running, all the time
+      </div>
+    </div>
+
+    <div class="vs">vs</div>
+
+    <div class="side after">
+      <h3>With mcpm (1 entry)</h3>
+      <div class="file-block"><span class="comment">// .mcp.json -- only mcpm</span>
+{
+  <span class="key">"mcpServers"</span>: {
+    <span class="str">"mcp-manager"</span>: {
+      <span class="key">"command"</span>: <span class="str">"node"</span>,
+      <span class="key">"args"</span>: [<span class="str">"build/index.js"</span>],
+      <span class="key">"servers"</span>: [
+        <span class="str">"wiki-lite"</span>, <span class="str">"v1-lite"</span>,
+        <span class="str">"trend-docs"</span>, <span class="str">"winremote"</span>
+      ]
+    }
+  }
+}</div>
+      <div class="callout">
+        <span class="good">+</span> Servers start <strong>on demand</strong> (mcpm start wiki-lite)<br>
+        <span class="good">+</span> Start/stop/restart <strong>mid-session</strong> without restarting Claude<br>
+        <span class="good">+</span> Central registry: <strong>servers.yaml</strong> (shared across projects)<br>
+        <span class="good">+</span> Hot reload: <strong>mcpm reload</strong> picks up config changes<br>
+        <span class="good">+</span> Auto-stop idle servers after timeout
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANEL 2: How a call flows ============ -->
+<div class="panel">
+  <div class="panel-title">HOW IT WORKS <span>What happens when Claude calls a tool on a backend server</span></div>
+
+  <div class="flow-row" style="margin-bottom: 20px;">
+    <div class="flow-box claude">
+      <div class="label">Claude Code</div>
+      <div class="detail">Sees only "mcpm"<br>in its tool list</div>
+    </div>
+    <div class="flow-arrow">
+      <span class="arrow">---></span>
+      <span class="lbl">stdio<br>(JSON-RPC)</span>
+    </div>
+    <div class="flow-box mcpm" style="min-width: 200px;">
+      <div class="label">mcpm process</div>
+      <div class="detail">Looks up server name<br>in RUNNING map.<br>Forwards the call.</div>
+    </div>
+    <div class="flow-arrow">
+      <span class="arrow">---></span>
+      <span class="lbl">stdio or HTTP<br>(auto-detected)</span>
+    </div>
+    <div class="flow-box backend">
+      <div class="label">wiki-lite</div>
+      <div class="detail">Runs the tool.<br>Returns result.</div>
+    </div>
+  </div>
+
+  <div class="callout" style="text-align: center; margin-bottom: 16px;">
+    mcpm is a <strong>transparent proxy</strong>. Claude calls <code>mcpm call wiki-lite search_pages {"query":"..."}</code> and mcpm forwards it to wiki-lite's stdin. The result passes back through mcpm to Claude. Claude never talks to backend servers directly.
+  </div>
+
+  <div style="display: flex; gap: 16px; justify-content: center;">
+    <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; min-width: 220px;">
+      <div style="color: #3fb950; font-size: 12px; font-weight: 700; margin-bottom: 6px;">stdio servers (local)</div>
+      <div style="font-size: 11px; color: #8b949e; line-height: 1.6;">
+        mcpm <strong style="color:#e6edf3">spawns</strong> child process<br>
+        Talks via <strong style="color:#e6edf3">stdin/stdout</strong> pipes<br>
+        <strong style="color:#e6edf3">Kills</strong> process on stop<br>
+        <code>command</code> + <code>args</code> in servers.yaml
+      </div>
+    </div>
+    <div style="background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 16px; min-width: 220px;">
+      <div style="color: #d29922; font-size: 12px; font-weight: 700; margin-bottom: 6px;">HTTP servers (remote)</div>
+      <div style="font-size: 11px; color: #8b949e; line-height: 1.6;">
+        mcpm sends <strong style="color:#e6edf3">HTTP POST</strong> requests<br>
+        Handles <strong style="color:#e6edf3">SSE responses</strong> + session IDs<br>
+        Custom <strong style="color:#e6edf3">headers</strong> (Bearer auth)<br>
+        <code>url</code> + <code>headers</code> in servers.yaml
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANEL 3: File map ============ -->
+<div class="panel">
+  <div class="panel-title">FILES <span>What each config file does and where it lives</span></div>
+  <div class="file-map">
+    <div class="file-card">
+      <h4>servers.yaml</h4>
+      <span class="role">Central Server Registry</span>
+      <p>
+        Lives next to mcpm's index.js.<br>
+        <strong style="color:#e6edf3">Every server you can use</strong> is defined here -- name, command/url, description, tags, keywords.<br><br>
+        Shared across all projects.<br>
+        Edit this to add/remove/configure servers.<br><br>
+        <code>mcpm reload</code> re-reads this without restarting anything.
+      </p>
+    </div>
+    <div class="file-card">
+      <h4>.mcp.json</h4>
+      <span class="role">Project Server List</span>
+      <p>
+        Lives in each project root.<br>
+        Only contains <strong style="color:#e6edf3">mcpm itself</strong> + a <code>servers</code> array of names.<br><br>
+        The <code>servers</code> list controls which servers <strong style="color:#e6edf3">auto-start</strong> when you open this project.<br><br>
+        Never put direct server entries here. Only mcpm.
+      </p>
+    </div>
+    <div class="file-card">
+      <h4>capabilities-cache.yaml</h4>
+      <span class="role">Tool Cache</span>
+      <p>
+        Auto-generated by mcpm.<br>
+        Caches each server's <strong style="color:#e6edf3">tool list</strong> so mcpm can answer <code>search</code> and <code>tools</code> queries even when servers are stopped.<br><br>
+        Updated every time a server starts.<br>
+        Safe to delete (regenerated automatically).
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANEL 4: Why use it ============ -->
+<div class="panel">
+  <div class="panel-title">WHY USE MCPM <span>What you get that default /mcp doesn't give you</span></div>
+  <div class="benefits">
+    <div class="benefit">
+      <div class="icon">[*]</div>
+      <h4>On-Demand Start</h4>
+      <p>Servers start when needed, not all at once. Saves memory + startup time.</p>
+    </div>
+    <div class="benefit">
+      <div class="icon">{~}</div>
+      <h4>Hot Reload</h4>
+      <p>Change servers.yaml, run <code>mcpm reload</code>. No Claude restart needed.</p>
+    </div>
+    <div class="benefit">
+      <div class="icon">[z]</div>
+      <h4>Idle Timeout</h4>
+      <p>Unused servers auto-stop after 5 min. Resources freed automatically.</p>
+    </div>
+    <div class="benefit">
+      <div class="icon">&lt;-&gt;</div>
+      <h4>HTTP Proxy</h4>
+      <p>Remote MCP servers over HTTP/SSE. Auth headers, session IDs, SSE parsing built in.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ============ PANEL 5: Commands ============ -->
+<div class="panel">
+  <div class="panel-title">COMMANDS <span>How to use mcpm day-to-day</span></div>
+  <div class="cmd-grid">
+    <div class="cmd"><code>mcpm list_servers</code> <span class="desc">See all servers + running/stopped status</span></div>
+    <div class="cmd"><code>mcpm start wiki-lite</code> <span class="desc">Start a server (spawns process or connects HTTP)</span></div>
+    <div class="cmd"><code>mcpm stop wiki-lite</code> <span class="desc">Stop a running server</span></div>
+    <div class="cmd"><code>mcpm reload</code> <span class="desc">Re-read servers.yaml without restart</span></div>
+    <div class="cmd"><code>mcpm call wiki-lite search ...</code> <span class="desc">Call a tool on a backend server</span></div>
+    <div class="cmd"><code>mcpm tools wiki-lite</code> <span class="desc">List tools available on a server</span></div>
+    <div class="cmd"><code>mcpm add my-server --command=...</code> <span class="desc">Register a new server in servers.yaml</span></div>
+    <div class="cmd"><code>mcpm search "wiki"</code> <span class="desc">Search servers + tools by keyword</span></div>
+    <div class="cmd"><code>mcpm discover</code> <span class="desc">Scan for unregistered MCP servers nearby</span></div>
+    <div class="cmd"><code>mcpm status</code> <span class="desc">System health, memory usage, uptime</span></div>
+  </div>
+  <div class="callout" style="margin-top: 12px;">
+    <strong>To reload after code changes:</strong> <code>/mcp</code> --> select mcp-manager --> Reconnect. This restarts the mcpm process with the latest build. Then <code>mcpm reload</code> for servers.yaml changes.
+  </div>
+</div>
+
+</body>
+</html>
