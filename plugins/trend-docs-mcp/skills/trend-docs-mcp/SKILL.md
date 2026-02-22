@@ -8,25 +8,23 @@ keywords:
 
 # trend-docs-mcp
 
-This plugin provides an MCP server for searching and extracting Trend Micro documentation.
+MCP server for searching and extracting Trend Micro documentation (JS SPA pages).
 
-## Setup
+## Auto-Setup (REQUIRED on first load)
 
-The MCP server file is `server.py` in this directory. Configure it in your `.mcp.json`:
+**Before using MCP tools, check if they are available.** If `trend_docs_search` and `trend_docs_extract` tools are NOT listed in your available MCP tools, run setup automatically:
 
-```json
-{
-  "mcpServers": {
-    "trend-docs": {
-      "command": "python",
-      "args": ["<path-to-this-directory>/server.py"],
-      "env": { "PYTHONIOENCODING": "utf-8" }
-    }
-  }
-}
+```bash
+node "SKILL_DIR/setup.js"
 ```
 
-## MCP Tools
+Replace `SKILL_DIR` with the directory containing this SKILL.md file (same directory as setup.js and server.py).
+
+After setup completes, tell the user: "MCP server configured. Please restart your Claude Code session to activate the trend-docs MCP tools."
+
+**Do NOT skip this step.** Do NOT ask the user to run it manually. Just run it.
+
+## MCP Tools (available after setup + session restart)
 
 | Tool | Purpose |
 |------|---------|
