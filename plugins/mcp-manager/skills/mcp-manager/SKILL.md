@@ -92,3 +92,22 @@ When config changes, tell user:
 - **Only mcpm in .mcp.json** - never add direct MCP server entries
 - All servers (stdio + HTTP) go through mcpm
 - HTTP servers: `url` + `headers` in servers.yaml
+
+## Uninstall
+
+To remove mcp-manager and restore previous config:
+
+```bash
+node "SKILL_DIR/uninstall.js"
+claude plugin uninstall mcp-manager
+```
+
+Uninstall restores settings.json and .mcp.json from backup, removes instruction files, and cleans up CLAUDE.md rules.
+
+## Recommended Companion
+
+mcp-manager works standalone, but **super-manager** gives a better experience -- it bundles credential-manager (secure token storage), instruction-manager (context injection on every prompt), skill-manager (auto-detect tools), and hook-manager.
+
+```
+claude plugin install super-manager@grobomo-marketplace
+```

@@ -4,10 +4,11 @@
  * Auto-configures the mcpm MCP server on plugin install.
  *
  * Strategy:
- *   1. npm install runtime deps (same directory as build/index.js)
- *   2. Add mcp-manager to settings.json mcpServers
- *   3. Copy template servers.yaml if none exists
- *   4. Create instruction files if instruction-manager is installed
+ *   1. Backup existing settings.json and .mcp.json
+ *   2. npm install runtime deps (same directory as build/index.js)
+ *   3. Add mcp-manager to settings.json mcpServers
+ *   4. Copy template servers.yaml if none exists
+ *   5. Create instruction files OR inject CLAUDE.md fallback
  *
  * Pure Node.js (fs, path, os, child_process) - no external dependencies.
  */
@@ -27,7 +28,58 @@ const BUILD_INDEX = path.join(SKILL_DIR, 'build', 'index.js');
 const HOME = os.homedir();
 const CLAUDE_DIR = path.join(HOME, '.claude');
 const SETTINGS_PATH = path.join(CLAUDE_DIR, 'settings.json');
+const CLAUDE_MD_PATH = path.join(CLAUDE_DIR, 'CLAUDE.md');
 const INSTRUCTIONS_DIR = path.join(CLAUDE_DIR, 'instructions', 'UserPromptSubmit');
+const BACKUPS_DIR = path.join(CLAUDE_DIR, 'backups', 'mcp-manager');
+
+// ---- Backup & Restore ----
+
+function createBackup() {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  const backupDir = path.join(BACKUPS_DIR, timestamp);
+  fs.mkdirSync(backupDir, { recursive: true });
+
+  const manifest = { timestamp, files: {}, created: [] };
+
+  // Backup settings.json
+  if (fs.existsSync(SETTINGS_PATH)) {
+    const dest = path.join(backupDir, 'settings.json');
+    fs.copyFileSync(SETTINGS_PATH, dest);
+    manifest.files['settings.json'] = SETTINGS_PATH;
+    log('Backed up settings.json');
+  }
+
+  // Backup CLAUDE.md
+  if (fs.existsSync(CLAUDE_MD_PATH)) {
+    const dest = path.join(backupDir, 'CLAUDE.md');
+    fs.copyFileSync(CLAUDE_MD_PATH, dest);
+    manifest.files['CLAUDE.md'] = CLAUDE_MD_PATH;
+    log('Backed up CLAUDE.md');
+  }
+
+  // Backup project .mcp.json if it exists
+  const mcpJsonPath = path.join(process.cwd(), '.mcp.json');
+  if (fs.existsSync(mcpJsonPath)) {
+    const dest = path.join(backupDir, 'mcp.json');
+    fs.copyFileSync(mcpJsonPath, dest);
+    manifest.files['mcp.json'] = mcpJsonPath;
+    log('Backed up .mcp.json');
+  }
+
+  fs.writeFileSync(path.join(backupDir, 'manifest.json'), JSON.stringify(manifest, null, 2), 'utf8');
+  log('Backup dir: ' + backupDir);
+  return { backupDir, manifest };
+}
+
+function trackCreatedFile(backupDir, filePath) {
+  const manifestPath = path.join(backupDir, 'manifest.json');
+  try {
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    if (!manifest.created) manifest.created = [];
+    manifest.created.push(filePath);
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+  } catch {}
+}
 
 // ---- Step 1: Install npm dependencies ----
 
@@ -37,7 +89,6 @@ function installDeps() {
     return false;
   }
 
-  // Check if node_modules already exists with required packages
   const nodeModules = path.join(SKILL_DIR, 'node_modules');
   const requiredPkgs = ['@modelcontextprotocol/sdk', 'yaml', 'zod'];
   const allInstalled = requiredPkgs.every(pkg => {
@@ -69,7 +120,7 @@ function installDeps() {
 
 // ---- Step 2: Configure settings.json ----
 
-function configureSettings() {
+function configureSettings(backupDir) {
   const indexPath = BUILD_INDEX.replace(/\\/g, '/');
 
   if (!fs.existsSync(indexPath)) {
@@ -77,7 +128,6 @@ function configureSettings() {
     return false;
   }
 
-  // Ensure .claude directory exists
   if (!fs.existsSync(CLAUDE_DIR)) {
     fs.mkdirSync(CLAUDE_DIR, { recursive: true });
   }
@@ -139,19 +189,17 @@ function configureProjectMcpJson() {
 
 function copyServersYaml() {
   const templatePath = path.join(SKILL_DIR, 'servers.yaml');
-  const targetPath = path.join(SKILL_DIR, 'servers.yaml');
 
-  // servers.yaml lives next to build/index.js - the server finds it at BASE_DIR/servers.yaml
   if (!fs.existsSync(templatePath)) {
     warn('No servers.yaml template found');
     return false;
   }
 
-  log('servers.yaml template ready at ' + targetPath);
+  log('servers.yaml template ready at ' + templatePath);
   return true;
 }
 
-// ---- Step 5: Create instruction files ----
+// ---- Step 5: Create instruction files OR CLAUDE.md fallback ----
 
 const INSTRUCTIONS = {
   'mcpm-only-in-mcp-json': {
@@ -210,11 +258,61 @@ Tell the user to run \`/mcp\`, select \`mcp-manager\`, and click reconnect. Then
   },
 };
 
-function createInstructions() {
-  if (!fs.existsSync(INSTRUCTIONS_DIR)) {
-    log('No instruction-manager found (no ' + INSTRUCTIONS_DIR + ') - skipping instructions');
+const CLAUDE_MD_MARKER = '<!-- mcp-manager-rules -->';
+const CLAUDE_MD_FALLBACK = `
+${CLAUDE_MD_MARKER}
+## MCP Server Rules (auto-added by mcp-manager)
+
+- All MCP servers managed by mcpm -- NEVER run \`claude mcp add\`, \`mcpm\` in Bash, or edit .mcp.json directly
+- Use ONE tool: \`mcp__mcp-manager__mcpm(operation="...")\` -- no other tool names exist
+- Add servers to mcpm's \`servers.yaml\` (in the mcp-manager skill directory), then \`/mcp\` -> Reconnect -> reload
+- Store tokens via credential-manager if installed, otherwise keep them in servers.yaml env section
+- **NEVER** add MCP server entries to .mcp.json except mcp-manager itself
+${CLAUDE_MD_MARKER}
+`;
+
+function injectClaudeMdFallback(backupDir) {
+  // Create CLAUDE.md if it doesn't exist
+  if (!fs.existsSync(CLAUDE_MD_PATH)) {
+    fs.mkdirSync(path.dirname(CLAUDE_MD_PATH), { recursive: true });
+    fs.writeFileSync(CLAUDE_MD_PATH, '', 'utf8');
+  }
+
+  const content = fs.readFileSync(CLAUDE_MD_PATH, 'utf8');
+  if (content.indexOf(CLAUDE_MD_MARKER) !== -1) {
+    log('CLAUDE.md already has mcp-manager rules');
     return false;
   }
+
+  fs.writeFileSync(CLAUDE_MD_PATH, content + CLAUDE_MD_FALLBACK, 'utf8');
+  log('Injected MCP rules into CLAUDE.md (no instruction-manager detected)');
+  return true;
+}
+
+function removeClaudeMdFallback() {
+  if (!fs.existsSync(CLAUDE_MD_PATH)) return false;
+  const content = fs.readFileSync(CLAUDE_MD_PATH, 'utf8');
+  const startIdx = content.indexOf(CLAUDE_MD_MARKER);
+  if (startIdx === -1) return false;
+  const endIdx = content.indexOf(CLAUDE_MD_MARKER, startIdx + CLAUDE_MD_MARKER.length);
+  if (endIdx === -1) return false;
+  const endOfMarker = endIdx + CLAUDE_MD_MARKER.length;
+  const before = content.slice(0, startIdx).replace(/\n+$/, '\n');
+  const after = content.slice(endOfMarker).replace(/^\n+/, '\n');
+  fs.writeFileSync(CLAUDE_MD_PATH, before + after, 'utf8');
+  return true;
+}
+
+function createInstructions(backupDir) {
+  if (!fs.existsSync(INSTRUCTIONS_DIR)) {
+    log('No instruction-manager found (no ' + INSTRUCTIONS_DIR + ')');
+    log('Using CLAUDE.md fallback instead');
+    injectClaudeMdFallback(backupDir);
+    return false;
+  }
+
+  // instruction-manager is installed - use instruction files and clean up any fallback
+  removeClaudeMdFallback();
 
   let created = 0;
   for (const [id, inst] of Object.entries(INSTRUCTIONS)) {
@@ -239,6 +337,7 @@ function createInstructions() {
       fs.writeFileSync(filePath, frontmatter + inst.content + '\n', 'utf8');
       created++;
       log('Created instruction: ' + id);
+      if (backupDir) trackCreatedFile(backupDir, filePath);
     } catch (e) {
       warn('Failed to create instruction ' + id + ': ' + e.message);
     }
@@ -261,6 +360,9 @@ function main() {
   }
   log('Server: ' + BUILD_INDEX);
 
+  // Step 0: Backup existing config
+  const { backupDir } = createBackup();
+
   // Step 1: Install deps
   const depsOk = installDeps();
   if (!depsOk) {
@@ -269,7 +371,7 @@ function main() {
   }
 
   // Step 2: Configure settings.json (user-level)
-  configureSettings();
+  configureSettings(backupDir);
 
   // Step 3: Configure .mcp.json (project-level, if in a project)
   const cwdMcpJson = path.join(process.cwd(), '.mcp.json');
@@ -280,11 +382,12 @@ function main() {
   // Step 4: servers.yaml
   copyServersYaml();
 
-  // Step 5: Instructions
-  createInstructions();
+  // Step 5: Instructions or CLAUDE.md fallback
+  createInstructions(backupDir);
 
   log('');
   log('Setup complete!');
+  log('Backup stored at: ' + backupDir);
   log('');
   log('Next steps:');
   log('  1. Run /mcp -> select mcp-manager -> Connect');
@@ -293,9 +396,37 @@ function main() {
   log('');
   log('To add a server:');
   log('  mcpm add my-server --command=python --args=\'["path/to/server.py"]\' --description="My server"');
+  log('');
+  log('To uninstall:');
+  log('  node "' + path.join(SKILL_DIR, 'uninstall.js') + '"');
+
+  // Check what companion plugins are missing and recommend super-manager
+  const hasCredentialManager = fs.existsSync(path.join(HOME, '.claude', 'skills', 'credential-manager', 'SKILL.md'));
+  const hasSuperManager = fs.existsSync(path.join(HOME, '.claude', 'skills', 'super-manager', 'SKILL.md'))
+    || fs.existsSync(path.join(HOME, '.claude', 'super-manager', 'SKILL.md'));
+  const hasInstructionManager = fs.existsSync(INSTRUCTIONS_DIR);
+
+  const missing = [];
+  if (!hasCredentialManager) missing.push('credential-manager (secure API token storage)');
+  if (!hasInstructionManager) missing.push('instruction-manager (context-aware prompt injection)');
+
+  if (missing.length > 0 || !hasSuperManager) {
+    log('');
+    log('------------------------------------------------------------');
+    log('  mcp-manager works standalone, but you will get a better');
+    log('  experience with super-manager installed. It includes:');
+    if (!hasCredentialManager) log('    - credential-manager: store API tokens in OS keychain');
+    if (!hasInstructionManager) log('    - instruction-manager: inject MCP rules on every prompt');
+    log('    - skill-manager: auto-detect which tools to use');
+    log('    - hook-manager: manage Claude Code hooks safely');
+    log('');
+    log('  Install super-manager (includes all of the above):');
+    log('    claude plugin install super-manager@grobomo-marketplace');
+    log('------------------------------------------------------------');
+  }
 }
 
-module.exports = { main, installDeps, configureSettings, createInstructions };
+module.exports = { main, installDeps, configureSettings, createInstructions, createBackup, removeClaudeMdFallback };
 
 if (require.main === module) {
   main();
