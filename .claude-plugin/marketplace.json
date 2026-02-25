@@ -97,6 +97,27 @@
       "author": {
         "name": "grobomo"
       }
+    },
+    {
+      "name": "claude-code-chat-export",
+      "source": "./plugins/claude-code-chat-export",
+      "category": "productivity",
+      "description": "Export Claude Code conversations to styled HTML with search, landing page, and raw text export",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      },
+      "tags": [
+        "export",
+        "conversation",
+        "chat",
+        "session",
+        "html",
+        "history",
+        "transcript",
+        "archive",
+        "backup"
+      ]
     }
   ]
 }
