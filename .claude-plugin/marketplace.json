@@ -118,6 +118,24 @@
         "archive",
         "backup"
       ]
+    },
+    {
+      "name": "v1-oat-report",
+      "source": "./plugins/v1-oat-report",
+      "category": "security",
+      "description": "Generate styled HTML reports of Vision One OAT detections with MITRE mapping",
+      "version": "1.0.0",
+      "author": {
+        "name": "Joel Ginsberg"
+      },
+      "tags": [
+        "oat",
+        "detections",
+        "vision-one",
+        "mitre",
+        "security",
+        "report"
+      ]
     }
   ]
 }
