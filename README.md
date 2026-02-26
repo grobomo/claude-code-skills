@@ -35,6 +35,7 @@ claude plugin install super-manager@grobomo-marketplace --scope user
 | **trend-docs** | Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads. | `claude plugin install trend-docs@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs) |
 | **trend-docs-mcp** | MCP server for searching and reading Trend Micro documentation. DuckDuckGo search + async Playwright extraction for JS SPA pages. Companion to the trend-docs skill. | `claude plugin install trend-docs-mcp@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/trend-docs-mcp) |
 | **v1-api** | Trend Micro Vision One API - skill (280+ ops via executor.py) + MCP server (75 ops via server.py). Alerts, endpoints, threats, cloud security, response actions. | `claude plugin install v1-api@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/v1-api) |
+| **v1-oat-report** | Generate styled HTML reports of Vision One OAT detections with MITRE mapping | `claude plugin install v1-oat-report@grobomo-marketplace` | [GitHub](https://github.com/grobomo/claude-code-skills/tree/main/plugins/v1-oat-report) |
 <!-- PLUGINS_TABLE_END -->
 
 ## License
