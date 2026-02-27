@@ -102,21 +102,21 @@
       "name": "claude-code-chat-export",
       "source": "./plugins/claude-code-chat-export",
       "category": "productivity",
-      "description": "Export Claude Code conversations to styled HTML with search, landing page, and raw text export",
-      "version": "1.0.0",
+      "description": "Export Claude Code conversations to styled HTML with search and optional Markdown output. Strips system noise, smart tool formatting.",
+      "version": "2.0.0",
       "author": {
         "name": "grobomo"
       },
       "tags": [
         "export",
-        "conversation",
         "chat",
+        "transcript",
         "session",
         "html",
+        "markdown",
+        "conversation",
         "history",
-        "transcript",
-        "archive",
-        "backup"
+        "share"
       ]
     },
     {

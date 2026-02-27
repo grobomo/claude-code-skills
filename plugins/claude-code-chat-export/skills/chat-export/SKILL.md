@@ -1,64 +1,74 @@
 ---
+
 name: chat-export
-description: Export Claude Code conversations to styled HTML with search, landing page, and raw text export
-keywords: [export, conversation, chat, session, html, history, transcript, archive, backup]
-invocation: /chat-export
-arguments: Optional JSONL path or session name. Auto-detects current session if omitted.
+description: |
+  Export Claude Code conversations to styled HTML with search, landing page,
+  and optional Markdown output. Strips system noise, formats tool calls concisely.
+keywords:
+  - export chat
+  - export transcript
+  - export session
+  - chat export
+  - share session
+  - save conversation
+  - transcript
+  - session history
+  - export markdown
+
 ---
 
-# Chat Export Skill
+# Chat Export
 
-Export Claude Code JSONL conversations to polished terminal-styled HTML pages with full-text search, expandable tool calls, screenshot galleries, and raw text export.
+Export Claude Code JSONL conversations to polished terminal-styled HTML pages with full-text search, expandable tool calls, screenshot galleries, and raw text export. Optional Markdown output for pasting in Slack, wiki, or docs.
 
 ## Usage
 
+```bash
+# Export current session to HTML (default)
+python3 export.py
+
+# Export current session to Markdown
+python3 export.py --format md
+
+# Export specific JSONL file
+python3 export.py path/to/session.jsonl
+
+# Export all sessions for current project
+python3 export.py --all
+
+# Export all sessions as Markdown
+python3 export.py --all --format md
+
+# Regenerate landing page only
+python3 export.py --landing
+
+# Custom output path
+python3 export.py --out ~/Desktop/my-session.html
+python3 export.py --format md --out ~/Desktop/my-session.md
 ```
-/chat-export                          # Export current session
-/chat-export --landing                # Regenerate landing page only
-/chat-export path/to/session.jsonl    # Export specific JSONL file
-/chat-export --all                    # Export all sessions for current project
-```
+
+## Output Formats
+
+| Format | Flag | Features |
+|--------|------|----------|
+| HTML (default) | `--format html` | Terminal dark theme, search, expandable tool calls, screenshot gallery, Export Raw TXT button, landing page |
+| Markdown | `--format md` | Clean headers, collapsible tool results, concise tool formatting, ready for wiki/Slack |
 
 ## What It Does
 
-1. Parses Claude Code JSONL conversation files (two-pass: collect tool results, then build turns)
-2. Generates self-contained HTML with:
-   - Terminal dark theme (Cascadia Code, #0C0C0C background)
-   - Golden scarab beetle logo in title bar
-   - 2-row sticky header: logo + title + Export TXT button / project path + centered search
-   - Expandable tool calls with input/output details
-   - NPP-style Find All search with hit highlighting
-   - Resizable search results panel
-   - Screenshot gallery (if screenshot dir exists)
-   - Export Raw TXT button for plain text download
-   - Clickable project path to open in file explorer
-3. Updates manifest.json with export metadata
-4. Regenerates landing page (index.html) with search across all exports
+1. Parses Claude Code JSONL transcripts (two-pass: collect tool results, then build turns)
+2. Strips system-reminder tags, hook noise, local-command wrappers
+3. Formats tool calls concisely (bash inline, file paths for Read, diffs for Edit)
+4. Auto-detects session, project name, branch, and working directory
+5. HTML: generates self-contained styled page with search and landing page
+6. Markdown: generates clean `.md` with collapsible details blocks
 
-## Output Structure
+## Installation
 
-```
-~/Downloads/claude-exports/
-  index.html              # Landing page - all exports searchable
-  manifest.json           # Export metadata
-  moltbot/
-    ddei-session.html     # Individual export
-  chat-export/
-    skill-dev.html
+```bash
+git clone https://github.com/grobomo/claude-code-chat-export.git
+cd claude-code-chat-export
+python3 export.py --format md
 ```
 
-## Auto-Detection
-
-- **Session**: Current active JSONL from ~/.claude/projects/
-- **Project name**: Derived from JSONL path (last directory component)
-- **Branch**: From `git rev-parse --abbrev-ref HEAD`
-- **Session name**: First user message (truncated to 60 chars)
-- **Project path**: Working directory shortened to ~/relative
-
-## How Claude Should Use This Skill
-
-When the user says "export this chat", "save this conversation", "export session to html":
-
-1. Run `python3 {base_dir}/export.py` with appropriate args (base_dir is provided by Claude Code when the skill loads)
-2. Report the output path and file size
-3. Open the exported HTML in the default browser
+No pip dependencies required -- uses only Python stdlib.

@@ -1,7 +1,7 @@
 {
   "name": "claude-code-chat-export",
-  "version": "1.0.0",
-  "description": "Export Claude Code conversations to styled HTML with search, landing page, and raw text export",
+  "version": "2.0.0",
+  "description": "Export Claude Code conversations to styled HTML with search and optional Markdown output. Strips system noise, smart tool formatting.",
   "author": {
     "name": "grobomo"
   },
@@ -9,13 +9,12 @@
   "license": "MIT",
   "keywords": [
     "export",
-    "conversation",
     "chat",
-    "session",
-    "html",
-    "history",
     "transcript",
-    "archive",
-    "backup"
+    "session",
+    "markdown",
+    "conversation",
+    "history",
+    "share"
   ]
 }
