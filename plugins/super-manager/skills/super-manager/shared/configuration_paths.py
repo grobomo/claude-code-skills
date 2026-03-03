@@ -5,6 +5,7 @@ All paths are centralized here so no other file has magic strings.
 Import paths from here: from shared.configuration_paths import HOOKS_DIR, SETTINGS_JSON, etc.
 """
 import os
+import glob
 
 # Base directories
 HOME = os.environ.get("HOME") or os.environ.get("USERPROFILE", "")
@@ -38,12 +39,32 @@ HOOKS_DIR = os.path.join(CLAUDE_DIR, "hooks")
 # Skill directories (Claude Code discovers skills here)
 GLOBAL_SKILLS_DIR = os.path.join(CLAUDE_DIR, "skills")
 
-# MCP servers.yaml (search order: common locations, then local registries fallback)
-MCP_SERVERS_YAML_PATHS = [
-    os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-manager", "servers.yaml"),
-    os.path.join(HOME, "mcp", "mcp-manager", "servers.yaml"),
-    os.path.join(REGISTRIES_DIR, "servers.yaml"),
-]
+
+def _find_mcp_dirs():
+    """Discover MCP server directories from common locations."""
+    candidates = [
+        os.path.join(HOME, "mcp"),
+        os.path.join(HOME, "MCP"),
+    ]
+    # Also search Documents/*/MCP and OneDrive*/Documents/*/MCP patterns
+    for doc_dir in glob.glob(os.path.join(HOME, "Documents", "*", "MCP")):
+        candidates.append(doc_dir)
+    for doc_dir in glob.glob(os.path.join(HOME, "OneDrive*", "Documents", "*", "MCP")):
+        candidates.append(doc_dir)
+    return [d for d in candidates if os.path.isdir(d)]
+
+
+def _find_servers_yaml_paths():
+    """Build servers.yaml search paths dynamically."""
+    paths = []
+    for mcp_dir in _find_mcp_dirs():
+        paths.append(os.path.join(mcp_dir, "mcp-manager", "servers.yaml"))
+    paths.append(os.path.join(REGISTRIES_DIR, "servers.yaml"))
+    return paths
+
+
+# MCP servers.yaml (search order: discovered locations, then local registries fallback)
+MCP_SERVERS_YAML_PATHS = _find_servers_yaml_paths()
 
 # Existing tools (originals, not touched)
 SKILL_MGR_CLI = os.path.join(GLOBAL_SKILLS_DIR, "skill-marketplace", "cli", "skill-mgr")
@@ -62,18 +83,20 @@ def find_servers_yaml():
             return path
     return None
 
-# Known .env file locations for credential scanning
-# Each tuple: (service_name, env_file_path)
-KNOWN_ENV_FILES = [
-    ("wiki-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-wiki-lite", ".env")),
-    ("jira-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-jira-lite", ".env")),
-    ("v1-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-v1-lite", ".env")),
-    ("atlassian-lite", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-atlassian-lite", ".env")),
-    ("trendgpt", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-trendgpt-a2a", ".env")),
-    ("v1ego", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-v1ego", ".env")),
-    ("mcp-manager", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "MCP", "mcp-manager", ".env")),
-    ("v1-api", os.path.join(HOME, "OneDrive - TrendMicro", "Documents", "ProjectsCL", "lab-worker", ".claude", "skills", "v1-api", ".env")),
-]
+
+def _discover_env_files():
+    """Discover .env files in MCP server directories dynamically."""
+    env_files = []
+    for mcp_dir in _find_mcp_dirs():
+        for entry in os.listdir(mcp_dir):
+            env_path = os.path.join(mcp_dir, entry, ".env")
+            if os.path.isfile(env_path):
+                env_files.append((entry, env_path))
+    return env_files
+
+
+# Known .env file locations for credential scanning (discovered at import time)
+KNOWN_ENV_FILES = _discover_env_files()
 
 # Patterns that indicate a value is a secret (not a URL, username, etc.)
 SECRET_PATTERNS = [

@@ -17,7 +17,7 @@ See SKILL.md for detailed usage instructions.
 
 ## Repository
 
-https://github.com/joel-ginsberg_tmemu/skill-diff-view
+https://github.com/grobomo/claude-code-skills
 
 ## License
 

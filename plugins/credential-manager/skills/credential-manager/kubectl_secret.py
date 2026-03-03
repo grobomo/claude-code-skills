@@ -7,7 +7,7 @@ and pipes them to kubectl without exposing values in shell history or logs.
 Usage:
     python kubectl_secret.py \
       --name openclaw-secrets \
-      --namespace joelg-moltbot \
+      --namespace my-namespace \
       --key rdsec/API_KEY:RDSEC_API_KEY \
       --key telegram/BOT_TOKEN:TELEGRAM_BOT_TOKEN
 

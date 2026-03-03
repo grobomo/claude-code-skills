@@ -121,13 +121,23 @@ def cmd_audit(env_path=None):
     if env_path:
         env_files.append(("custom", env_path))
     else:
-        # Scan common MCP locations
-        projects = os.path.expanduser("~/OneDrive - TrendMicro/Documents/ProjectsCL/MCP")
-        if os.path.isdir(projects):
-            for d in os.listdir(projects):
-                env = os.path.join(projects, d, ".env")
-                if os.path.isfile(env):
-                    env_files.append((d, env))
+        # Scan common MCP locations (auto-discover)
+        import glob
+        home = os.path.expanduser("~")
+        candidates = [
+            os.path.join(home, "mcp"),
+            os.path.join(home, "MCP"),
+        ]
+        for doc_dir in glob.glob(os.path.join(home, "Documents", "*", "MCP")):
+            candidates.append(doc_dir)
+        for doc_dir in glob.glob(os.path.join(home, "OneDrive*", "Documents", "*", "MCP")):
+            candidates.append(doc_dir)
+        for projects in candidates:
+            if os.path.isdir(projects):
+                for d in os.listdir(projects):
+                    env = os.path.join(projects, d, ".env")
+                    if os.path.isfile(env):
+                        env_files.append((d, env))
 
     findings = 0
     for service, path in env_files:

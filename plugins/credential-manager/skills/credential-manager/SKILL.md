@@ -103,7 +103,7 @@ For kubectl secrets:
 # Create k8s secret from credential store (no plaintext)
 python ~/.claude/skills/credential-manager/kubectl_secret.py \
   --name openclaw-secrets \
-  --namespace joelg-moltbot \
+  --namespace my-namespace \
   --key rdsec/API_KEY:RDSEC_API_KEY \
   --key telegram/BOT_TOKEN:TELEGRAM_BOT_TOKEN \
   --key openclaw/GATEWAY_TOKEN:OPENCLAW_GATEWAY_TOKEN
