@@ -1,0 +1,210 @@
+name: Plugin Quality Gate
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  sanitize-check:
+    name: Personal Path & Secret Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan for personal/hardcoded paths
+        run: |
+          echo "=== Scanning for hardcoded personal paths ==="
+          FOUND=0
+
+          # Pattern list -- add your username patterns here
+          PATTERNS=(
+            'C:/Users/'
+            'C:\Users\'
+            '/Users/[a-z]'
+            'OneDrive -'
+            'joel-ginsberg'
+            'joeltest'
+            'joelg'
+          )
+
+          for pattern in "${PATTERNS[@]}"; do
+            HITS=$(grep -rn "$pattern" plugins/ \
+              --include="*.py" --include="*.js" --include="*.json" \
+              --include="*.md" --include="*.sh" --include="*.yaml" \
+              --include="*.yml" --include="*.ts" 2>/dev/null || true)
+            if [ -n "$HITS" ]; then
+              echo "::error::Found hardcoded path pattern '$pattern':"
+              echo "$HITS" | head -20
+              FOUND=1
+            fi
+          done
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo ""
+            echo "::error::Hardcoded personal paths found. Replace with dynamic paths (os.homedir(), \$HOME, glob patterns)."
+            exit 1
+          fi
+          echo "No hardcoded paths found."
+
+      - name: Scan for plaintext secrets
+        run: |
+          echo "=== Scanning for plaintext secrets ==="
+          FOUND=0
+
+          # Check for .env files (should never be committed)
+          ENV_FILES=$(find plugins/ -name ".env" -o -name ".env.*" 2>/dev/null || true)
+          if [ -n "$ENV_FILES" ]; then
+            echo "::error::Found .env files that should not be committed:"
+            echo "$ENV_FILES"
+            FOUND=1
+          fi
+
+          # Check for hardcoded tokens/keys in code
+          SECRET_HITS=$(grep -rn \
+            -e 'TOKEN=["'"'"'][A-Za-z0-9_-]\{20,\}' \
+            -e 'KEY=["'"'"'][A-Za-z0-9_-]\{20,\}' \
+            -e 'SECRET=["'"'"'][A-Za-z0-9_-]\{20,\}' \
+            -e 'PASSWORD=["'"'"'][A-Za-z0-9_-]\{8,\}' \
+            -e 'ghp_[A-Za-z0-9]\{36\}' \
+            -e 'github_pat_[A-Za-z0-9_]\{82\}' \
+            -e 'sk-[A-Za-z0-9]\{20,\}' \
+            plugins/ \
+            --include="*.py" --include="*.js" --include="*.json" \
+            --include="*.yaml" --include="*.yml" --include="*.ts" \
+            2>/dev/null || true)
+          if [ -n "$SECRET_HITS" ]; then
+            echo "::error::Possible hardcoded secrets found:"
+            echo "$SECRET_HITS" | head -20
+            FOUND=1
+          fi
+
+          if [ "$FOUND" -eq 1 ]; then
+            echo ""
+            echo "::error::Secrets or .env files found. Use credential-manager (OS keyring) instead."
+            exit 1
+          fi
+          echo "No secrets found."
+
+  structure-check:
+    name: Plugin Structure Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate plugin structure
+        run: |
+          echo "=== Validating plugin structure ==="
+          ERRORS=0
+
+          for plugin_dir in plugins/*/; do
+            name=$(basename "$plugin_dir")
+            echo "--- Checking: $name ---"
+
+            # Check plugin.json exists and is valid
+            pj="$plugin_dir/.claude-plugin/plugin.json"
+            if [ ! -f "$pj" ]; then
+              echo "::error::$name: missing .claude-plugin/plugin.json"
+              ERRORS=$((ERRORS + 1))
+              continue
+            fi
+
+            # Validate JSON syntax
+            if ! python3 -c "import json; json.load(open('$pj'))" 2>/dev/null; then
+              echo "::error::$name: plugin.json is invalid JSON"
+              ERRORS=$((ERRORS + 1))
+              continue
+            fi
+
+            # Check required fields
+            MISSING=$(python3 << PYEOF
+          import json, sys
+          with open("$pj") as f:
+              data = json.load(f)
+          required = ["name", "version", "description"]
+          missing = [k for k in required if k not in data]
+          if missing:
+              print(", ".join(missing))
+          PYEOF
+            )
+            if [ -n "$MISSING" ]; then
+              echo "::error::$name: plugin.json missing fields: $MISSING"
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # Check SKILL.md exists
+            SKILL_COUNT=$(find "$plugin_dir" -name "SKILL.md" | wc -l)
+            if [ "$SKILL_COUNT" -eq 0 ]; then
+              echo "::error::$name: no SKILL.md found"
+              ERRORS=$((ERRORS + 1))
+            fi
+
+            # Check SKILL.md has YAML frontmatter
+            for skill_md in $(find "$plugin_dir" -name "SKILL.md"); do
+              FIRST_LINE=$(head -1 "$skill_md")
+              if [ "$FIRST_LINE" != "---" ]; then
+                echo "::error::$name: SKILL.md missing YAML frontmatter (first line must be ---)"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            # Check registry files are empty templates (not pre-populated)
+            for reg in $(find "$plugin_dir" -name "*-registry.json" 2>/dev/null); do
+              ENTRY_COUNT=$(python3 -c "
+          import json
+          with open('$reg') as f:
+              data = json.load(f)
+          total = 0
+          for v in data.values():
+              if isinstance(v, list):
+                  total += len(v)
+          print(total)
+          " 2>/dev/null || echo "error")
+              if [ "$ENTRY_COUNT" != "0" ] && [ "$ENTRY_COUNT" != "error" ]; then
+                echo "::error::$name: $(basename $reg) has $ENTRY_COUNT entries -- registry files must ship empty"
+                ERRORS=$((ERRORS + 1))
+              fi
+            done
+
+            echo "  $name: OK"
+          done
+
+          if [ "$ERRORS" -gt 0 ]; then
+            echo ""
+            echo "::error::$ERRORS structure errors found."
+            exit 1
+          fi
+          echo "All plugins valid."
+
+  line-endings:
+    name: Line Ending Check (LF only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for CRLF line endings
+        run: |
+          echo "=== Checking line endings ==="
+          CRLF_FILES=$(find plugins/ \
+            \( -name "*.py" -o -name "*.js" -o -name "*.json" \
+               -o -name "*.md" -o -name "*.yaml" -o -name "*.yml" \
+               -o -name "*.ts" -o -name "*.sh" \) \
+            -exec grep -Pl '\r\n' {} \; 2>/dev/null || true)
+
+          if [ -n "$CRLF_FILES" ]; then
+            echo "::error::Files with CRLF line endings (must be LF):"
+            echo "$CRLF_FILES"
+            echo ""
+            echo "Fix: git config core.autocrlf input"
+            exit 1
+          fi
+          echo "All files use LF line endings."
