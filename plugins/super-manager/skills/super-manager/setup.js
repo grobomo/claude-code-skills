@@ -310,6 +310,127 @@ function mergeSettings(paths) {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 2.5: Install bundled rules
+// ---------------------------------------------------------------------------
+
+/**
+ * Install publish-sanitize rule to ~/.claude/rules/UserPromptSubmit/
+ * Ensures the sanitization scan rule is always present, even without rule-manager.
+ * Skips if identical file already exists.
+ *
+ * @param {Object} paths - Path object from resolvePaths()
+ * @returns {Object} { installed: [], skipped: [], warnings: [] }
+ */
+function installRules(paths) {
+  var result = { installed: [], skipped: [], warnings: [] };
+  var rulesDir = path.join(paths.claudeDir, 'rules', 'UserPromptSubmit');
+
+  // Ensure rules directory exists
+  try {
+    fs.mkdirSync(rulesDir, { recursive: true });
+  } catch (e) {
+    result.warnings.push('Could not create rules dir: ' + e.message);
+    return result;
+  }
+
+  // Bundled rules to install
+  var bundledRules = [
+    {
+      filename: 'publish-sanitize.md',
+      content: [
+        '---',
+        'id: publish-sanitize',
+        'name: Sanitize Before Publishing',
+        'keywords: [publish, marketplace, plugin, ship, push, deploy, skill, public, repo]',
+        'description: "WHY: Published plugins shipped with hardcoded personal paths that broke on other machines. WHAT: Mandatory sanitization scan before any publish to marketplace or public repo."',
+        'enabled: true',
+        'priority: 5',
+        'action: Scan for hardcoded paths before publishing',
+        'min_matches: 2',
+        '---',
+        '',
+        '# Sanitize Before Publishing',
+        '',
+        '## WHY',
+        '',
+        'Published plugins contained hardcoded personal paths (`C:/Users/username/...`, `OneDrive - OrgName/...`,',
+        'personal namespaces). These paths break on every other machine and leak org/identity info.',
+        '',
+        '## Rule',
+        '',
+        'Before committing files to any public or shared repo (marketplace, GitHub public, plugin publish):',
+        '',
+        '### 1. Scan for personal paths',
+        '',
+        'Run this check on ALL files being published:',
+        '',
+        '```bash',
+        'grep -rn "C:/Users/\\|C:\\\\\\\\Users\\\\\\\\\\|OneDrive -" <dir> \\',
+        '  --include="*.py" --include="*.js" --include="*.json" --include="*.md" \\',
+        '  --include="*.sh" --include="*.yaml" --include="*.yml"',
+        '```',
+        '',
+        '### 2. Fix any hits',
+        '',
+        '| Pattern found | Replace with |',
+        '|--------------|-------------|',
+        '| Hardcoded home paths | `os.path.join(os.homedir(), ...)` or `$HOME/...` |',
+        '| Org-specific paths | Dynamic discovery via `glob` patterns |',
+        '| Personal GitHub usernames | `grobomo` or generic placeholder |',
+        '| Personal namespaces | Generic placeholders (`my-namespace`, `my-account`) |',
+        '| Personal IPs, AWS account IDs | Remove or use `<your-ip>` placeholders |',
+        '',
+        '### 3. Check registry/data files',
+        '',
+        'Registry files (`hook-registry.json`, `skill-registry.json`, etc.) must be empty templates:',
+        '```json',
+        '{"hooks": [], "version": "1.0"}',
+        '```',
+        'These are populated at runtime by setup.js. Never ship pre-populated registries.',
+        '',
+        '### 4. Verify no secrets',
+        '',
+        '```bash',
+        'grep -rn "TOKEN=\\|KEY=\\|SECRET=\\|PASSWORD=" <dir> --include="*.py" --include="*.js" --include="*.json" --include="*.env"',
+        '```',
+        ''
+      ].join('\n')
+    }
+  ];
+
+  for (var rule of bundledRules) {
+    var destPath = path.join(rulesDir, rule.filename);
+
+    if (fs.existsSync(destPath)) {
+      // Check if content is identical
+      try {
+        var existing = fs.readFileSync(destPath, 'utf8');
+        if (existing.trim() === rule.content.trim()) {
+          result.skipped.push(rule.filename + ' (identical)');
+          continue;
+        }
+        // Different content -- don't overwrite user customizations
+        result.skipped.push(rule.filename + ' (exists, preserving customizations)');
+        continue;
+      } catch (e) {
+        result.warnings.push(rule.filename + ': read error - ' + e.message);
+        continue;
+      }
+    }
+
+    // Install the rule
+    try {
+      fs.writeFileSync(destPath, rule.content, 'utf8');
+      result.installed.push(rule.filename);
+    } catch (e) {
+      result.warnings.push(rule.filename + ': write error - ' + e.message);
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Phase 3: Skill discovery (delegated to skill-manager)
 // ---------------------------------------------------------------------------
 // 2/18/26: Removed ~447 lines of duplicated functions:
@@ -490,6 +611,7 @@ function printSummary(results) {
   var snapshot = results.snapshot;
   var hooks = results.hooks;
   var settings = results.settings;
+  var rules = results.rules;
   var skills = results.skills;
   var registry = results.registry;
   var health = results.health;
@@ -537,6 +659,18 @@ function printSummary(results) {
     }
     if (settings.existed.length > 0) {
       for (var se of settings.existed) console.log('[setup]   Exists: ' + se);
+    }
+    console.log('');
+  }
+
+  // Rules installed
+  if (rules) {
+    console.log('[setup] Bundled rules:');
+    if (rules.installed.length > 0) {
+      for (var rli of rules.installed) console.log('[setup]   Installed: ' + rli);
+    }
+    if (rules.skipped.length > 0) {
+      for (var rls of rules.skipped) console.log('[setup]   Skipped: ' + rls);
     }
     console.log('');
   }
@@ -616,7 +750,14 @@ async function main() {
   for (var se of settings.existed) console.log('[setup]   Exists: ' + se);
   for (var serr of settings.errors) console.error('[setup:error]   ' + serr);
 
-  // 6. Discover skills & extract keywords (delegated to skill-manager)
+  // 6. Install bundled rules
+  console.log('\n[setup] Installing bundled rules...');
+  const rules = installRules(paths);
+  for (var ri of rules.installed) console.log('[setup]   Installed: ' + ri);
+  for (var rs of rules.skipped) console.log('[setup]   Skipped: ' + rs);
+  for (var rw of rules.warnings) console.warn('[setup:warn]   ' + rw);
+
+  // 7. Discover skills & extract keywords (delegated to skill-manager)
   var skills = [];
   var registry = { total: 0, updated: 0, added: 0 };
   try {
@@ -631,14 +772,14 @@ async function main() {
     console.log('[setup] Install skill-manager for keyword enrichment');
   }
 
-  // 7. Health check
+  // 8. Health check
   console.log('\n[setup] Running health check...');
   const health = healthCheck(paths);
 
-  // 8. Print summary
-  printSummary({ platform, paths, snapshot, hooks, settings, skills, registry, health });
+  // 9. Print summary
+  printSummary({ platform, paths, snapshot, hooks, settings, rules, skills, registry, health });
 
-  return { platform, paths, snapshot, hooks, settings, skills, registry, health };
+  return { platform, paths, snapshot, hooks, settings, rules, skills, registry, health };
 }
 
 // Export all functions
@@ -648,6 +789,7 @@ module.exports = {
   snapshotConfig,
   installHooks,
   mergeSettings,
+  installRules,
   healthCheck,
   printSummary,
   main
