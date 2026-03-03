@@ -431,6 +431,95 @@ function installRules(paths) {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 2.75: Install GitHub Actions quality gate on marketplace repos
+// ---------------------------------------------------------------------------
+
+/**
+ * Scan marketplace repos and install quality-gate.yml if missing.
+ * Uses templates/quality-gate.yml as the source template.
+ * Generic template with universal patterns -- user adds personal patterns after.
+ *
+ * @param {Object} paths - Path object from resolvePaths()
+ * @returns {Object} { installed: [], skipped: [], warnings: [] }
+ */
+function installQualityGate(paths) {
+  var result = { installed: [], skipped: [], warnings: [] };
+
+  // Find the template relative to this script
+  var templatePath = path.join(__dirname, 'templates', 'quality-gate.yml');
+  if (!fs.existsSync(templatePath)) {
+    result.warnings.push('Template not found: templates/quality-gate.yml');
+    return result;
+  }
+
+  var templateContent;
+  try {
+    templateContent = fs.readFileSync(templatePath, 'utf8');
+  } catch (e) {
+    result.warnings.push('Cannot read template: ' + e.message);
+    return result;
+  }
+
+  // Scan for marketplace repos
+  var marketplacesDir = path.join(paths.claudeDir, 'plugins', 'marketplaces');
+  if (!fs.existsSync(marketplacesDir)) {
+    result.skipped.push('No marketplaces directory');
+    return result;
+  }
+
+  var entries;
+  try {
+    entries = fs.readdirSync(marketplacesDir);
+  } catch (e) {
+    result.warnings.push('Cannot read marketplaces dir: ' + e.message);
+    return result;
+  }
+
+  for (var entry of entries) {
+    var repoDir = path.join(marketplacesDir, entry);
+    var stat;
+    try { stat = fs.statSync(repoDir); } catch (e) { continue; }
+    if (!stat.isDirectory()) continue;
+
+    // Must have plugins/ dir to be a marketplace repo
+    var pluginsDir = path.join(repoDir, 'plugins');
+    if (!fs.existsSync(pluginsDir)) continue;
+
+    // Check if any quality gate workflow already exists
+    var workflowDir = path.join(repoDir, '.github', 'workflows');
+    var gateExists = false;
+    if (fs.existsSync(workflowDir)) {
+      try {
+        var wfFiles = fs.readdirSync(workflowDir);
+        for (var wf of wfFiles) {
+          if (wf.indexOf('quality-gate') !== -1) {
+            gateExists = true;
+            break;
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    if (gateExists) {
+      result.skipped.push(entry + ' (quality gate exists)');
+      continue;
+    }
+
+    // Install the quality gate workflow
+    try {
+      fs.mkdirSync(workflowDir, { recursive: true });
+      var destPath = path.join(workflowDir, 'quality-gate.yml');
+      fs.writeFileSync(destPath, templateContent, 'utf8');
+      result.installed.push(entry);
+    } catch (e) {
+      result.warnings.push(entry + ': ' + e.message);
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
 // Phase 3: Skill discovery (delegated to skill-manager)
 // ---------------------------------------------------------------------------
 // 2/18/26: Removed ~447 lines of duplicated functions:
@@ -592,6 +681,48 @@ function healthCheck(paths) {
     message: settingsMsg
   });
 
+  // Check 5: Marketplace repos have quality gates
+  var qgValid = true;
+  var qgMsg = '';
+  var marketplacesDir = path.join(paths.claudeDir, 'plugins', 'marketplaces');
+  if (fs.existsSync(marketplacesDir)) {
+    var missing = [];
+    try {
+      var mpEntries = fs.readdirSync(marketplacesDir);
+      for (var mpe of mpEntries) {
+        var mpDir = path.join(marketplacesDir, mpe);
+        try {
+          if (!fs.statSync(mpDir).isDirectory()) continue;
+        } catch (e) { continue; }
+        if (!fs.existsSync(path.join(mpDir, 'plugins'))) continue;
+        var wfDir = path.join(mpDir, '.github', 'workflows');
+        var hasGate = false;
+        if (fs.existsSync(wfDir)) {
+          try {
+            var wfs = fs.readdirSync(wfDir);
+            for (var w of wfs) {
+              if (w.indexOf('quality-gate') !== -1) { hasGate = true; break; }
+            }
+          } catch (e) { /* ignore */ }
+        }
+        if (!hasGate) missing.push(mpe);
+      }
+    } catch (e) { /* ignore */ }
+    if (missing.length > 0) {
+      qgValid = false;
+      qgMsg = 'Missing quality gate: ' + missing.join(', ');
+    } else {
+      qgMsg = 'All marketplace repos have quality gates';
+    }
+  } else {
+    qgMsg = 'No marketplaces (OK)';
+  }
+  checks.push({
+    name: 'Quality gates installed',
+    passed: qgValid,
+    message: qgMsg
+  });
+
   // Overall health
   var allPassed = checks.every(function(c) { return c.passed; });
 
@@ -671,6 +802,22 @@ function printSummary(results) {
     }
     if (rules.skipped.length > 0) {
       for (var rls of rules.skipped) console.log('[setup]   Skipped: ' + rls);
+    }
+    console.log('');
+  }
+
+  // Quality gate
+  var qualityGate = results.qualityGate;
+  if (qualityGate) {
+    console.log('[setup] Quality gates:');
+    if (qualityGate.installed.length > 0) {
+      for (var qgi of qualityGate.installed) console.log('[setup]   Installed: ' + qgi);
+    }
+    if (qualityGate.skipped.length > 0) {
+      for (var qgs of qualityGate.skipped) console.log('[setup]   Skipped: ' + qgs);
+    }
+    if (qualityGate.warnings.length > 0) {
+      for (var qgw of qualityGate.warnings) console.log('[setup:warn]   ' + qgw);
     }
     console.log('');
   }
@@ -757,7 +904,14 @@ async function main() {
   for (var rs of rules.skipped) console.log('[setup]   Skipped: ' + rs);
   for (var rw of rules.warnings) console.warn('[setup:warn]   ' + rw);
 
-  // 7. Discover skills & extract keywords (delegated to skill-manager)
+  // 7. Install quality gate on marketplace repos
+  console.log('\n[setup] Checking marketplace repos for quality gates...');
+  const qualityGate = installQualityGate(paths);
+  for (var qi of qualityGate.installed) console.log('[setup]   Installed: ' + qi);
+  for (var qs of qualityGate.skipped) console.log('[setup]   Skipped: ' + qs);
+  for (var qw of qualityGate.warnings) console.warn('[setup:warn]   ' + qw);
+
+  // 8. Discover skills & extract keywords (delegated to skill-manager)
   var skills = [];
   var registry = { total: 0, updated: 0, added: 0 };
   try {
@@ -772,14 +926,14 @@ async function main() {
     console.log('[setup] Install skill-manager for keyword enrichment');
   }
 
-  // 8. Health check
+  // 9. Health check
   console.log('\n[setup] Running health check...');
   const health = healthCheck(paths);
 
-  // 9. Print summary
-  printSummary({ platform, paths, snapshot, hooks, settings, rules, skills, registry, health });
+  // 10. Print summary
+  printSummary({ platform, paths, snapshot, hooks, settings, rules, qualityGate, skills, registry, health });
 
-  return { platform, paths, snapshot, hooks, settings, rules, skills, registry, health };
+  return { platform, paths, snapshot, hooks, settings, rules, qualityGate, skills, registry, health };
 }
 
 // Export all functions
@@ -790,6 +944,7 @@ module.exports = {
   installHooks,
   mergeSettings,
   installRules,
+  installQualityGate,
   healthCheck,
   printSummary,
   main
