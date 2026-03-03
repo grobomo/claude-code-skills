@@ -136,6 +136,15 @@
         "security",
         "report"
       ]
+    },
+    {
+      "name": "pm-report",
+      "source": "./plugins/pm-report",
+      "description": "Generate evidence-based technical analysis reports for PM audiences. PDF output with coverage tables, bar charts, score cards, tiered recommendations, and embedded screenshots.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      }
     }
   ]
 }

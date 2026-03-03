@@ -1,0 +1,23 @@
+{
+  "name": "pm-report",
+  "description": "Generate evidence-based technical analysis reports for Product Management audiences. PDF output with coverage tables, bar charts, score cards, tiered recommendations, and embedded screenshots.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "report",
+    "pdf",
+    "product-management",
+    "analysis",
+    "gap-analysis",
+    "evidence",
+    "recommendations",
+    "coverage",
+    "executive",
+    "stakeholder"
+  ],
+  "skills": [
+    "./skills/pm-report"
+  ]
+}
