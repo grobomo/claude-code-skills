@@ -38,10 +38,14 @@ jobs:
           )
 
           for pattern in "${PATTERNS[@]}"; do
+            # Grep for pattern, then filter out documentation/rule lines
+            # (grep commands, example text, scan instructions)
             HITS=$(grep -rn "$pattern" plugins/ \
               --include="*.py" --include="*.js" --include="*.json" \
               --include="*.md" --include="*.sh" --include="*.yaml" \
-              --include="*.yml" --include="*.ts" 2>/dev/null || true)
+              --include="*.yml" --include="*.ts" 2>/dev/null \
+              | grep -v 'grep -rn\|Replace with\|Pattern found\|# Pattern\|os\.homedir\|\\$HOME\|example\|placeholder' \
+              || true)
             if [ -n "$HITS" ]; then
               echo "::error::Found hardcoded path pattern '$pattern':"
               echo "$HITS" | head -20

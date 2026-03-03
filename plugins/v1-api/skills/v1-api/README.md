@@ -52,7 +52,7 @@ V1_REGION=us
 
 ## Repository
 
-https://github.com/joel-ginsberg_tmemu/skill-v1-api
+https://github.com/grobomo/claude-code-skills
 
 ## License
 
