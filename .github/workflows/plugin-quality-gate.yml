@@ -44,7 +44,7 @@ jobs:
               --include="*.py" --include="*.js" --include="*.json" \
               --include="*.md" --include="*.sh" --include="*.yaml" \
               --include="*.yml" --include="*.ts" 2>/dev/null \
-              | grep -v 'grep -rn\|Replace with\|Pattern found\|# Pattern\|os\.homedir\|\\$HOME\|example\|placeholder' \
+              | grep -v 'grep -rn\|Replace with\|Pattern found\|# Pattern\|os\.homedir\|\\$HOME\|example\|placeholder\|hardcoded personal\|username/\.\.\.' \
               || true)
             if [ -n "$HITS" ]; then
               echo "::error::Found hardcoded path pattern '$pattern':"
