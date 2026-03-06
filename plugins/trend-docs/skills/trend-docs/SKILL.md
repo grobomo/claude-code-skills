@@ -146,17 +146,49 @@ Master list of all Trend Micro product best practice guides (PDFs):
 Use this page when the user asks about best practices for any Trend Micro product.
 Extract with executor.py first to get PDF download links, then download and read the PDFs.
 
+## Speed: Cache + Slug Index
+
+The executor caches extracted pages as `.md` files in `~/.claude/skills/trend-docs/cache/`.
+Cache is checked BEFORE launching a browser. Cached pages are served in <0.1s vs ~15s.
+
+- **Cache TTL:** 30 days. Docs rarely change; stale entries re-fetched after TTL expires.
+- **`--no-cache`:** Force fresh fetch, bypass cache.
+- **`--topic "keyword"`:** Look up a topic in `doc-slugs.yaml` to skip WebSearch entirely.
+- **`--check-cache`:** Check cached pages for content changes (launches Playwright, hashes live innerText). First run seeds hashes; subsequent runs detect changes.
+- **`--check-cache --refresh`:** Auto-refresh stale pages in one pass.
+- **`--check-cache --topic "X"`:** Check only pages in a specific topic bundle.
+
+**Use `--topic` for known V1 endpoint policy pages** -- eliminates both WebSearch AND
+Playwright overhead on repeat access. If the topic isn't found, it prints all known topics.
+
 ## Usage Examples
 
 ```bash
-# Batch URLs from WebSearch results
-python ~/.claude/skills/trend-docs/executor.py --urls "https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-actions-different-services,https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-advanced-spam-protection"
+# Topic lookup (fastest -- slug index + cache, no WebSearch needed)
+python ~/.claude/skills/trend-docs/executor.py --topic "anti-malware scans"
+python ~/.claude/skills/trend-docs/executor.py --topic "firewall policy"
+python ~/.claude/skills/trend-docs/executor.py --topic "apex web reputation"
+
+# Batch URLs from WebSearch results (cached on first fetch)
+python ~/.claude/skills/trend-docs/executor.py --urls "URL1,URL2,URL3" --max-pages 5
 
 # Single URL
 python ~/.claude/skills/trend-docs/executor.py "https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-workbench"
 
 # Slug shorthand (OLH only)
 python ~/.claude/skills/trend-docs/executor.py "trend-vision-one-workbench"
+
+# Force fresh fetch (ignore cache)
+python ~/.claude/skills/trend-docs/executor.py --no-cache --topic "endpoint security policies"
+
+# Check if cached pages have changed (seeds hashes on first run)
+python ~/.claude/skills/trend-docs/executor.py --check-cache
+
+# Check + auto-refresh changed pages
+python ~/.claude/skills/trend-docs/executor.py --check-cache --refresh
+
+# Check only a specific topic bundle
+python ~/.claude/skills/trend-docs/executor.py --check-cache --topic "sep policy"
 ```
 
 ## Output

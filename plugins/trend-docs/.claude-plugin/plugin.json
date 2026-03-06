@@ -1,7 +1,7 @@
 {
   "name": "trend-docs",
-  "description": "Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads.",
-  "version": "1.1.0",
+  "description": "Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Playwright extractor for JS SPA pages. 30-day cache with change detection. Topic bundles for batch fetches. PDF download with Akamai CDN handling.",
+  "version": "2.0.0",
   "author": {
     "name": "grobomo"
   },
@@ -11,7 +11,9 @@
     "docs",
     "knowledge-base",
     "playwright",
-    "pdf"
+    "pdf",
+    "cache",
+    "vision-one"
   ],
   "skills": [
     "./skills/trend-docs"

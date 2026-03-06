@@ -1,6 +1,10 @@
 # trend-docs
 
-Read Trend Micro documentation from docs.trendmicro.com and success.trendmicro.com. Uses Playwright to extract content from JS SPA pages. Downloads PDFs via Playwright (handles Akamai CDN redirects). Saves to ~/Downloads.
+Extract Trend Micro product documentation from JS-rendered SPA pages that `curl` and `WebFetch` cannot read.
+
+## Why
+
+docs.trendmicro.com is a JavaScript Single Page App. Standard HTTP tools return empty HTML shells with zero content. This skill uses Playwright (headless Chromium) to render pages fully, then extracts clean markdown.
 
 ## Install
 
@@ -9,125 +13,84 @@ claude plugin marketplace add grobomo/claude-code-skills
 claude plugin install trend-docs@grobomo-marketplace --scope user
 ```
 
-Reads Trend Micro product documentation using Playwright to handle JS-rendered pages.
+Dependencies auto-install on first run: `playwright` + Chromium, `PyPDF2`, `pyyaml`.
 
-## CRITICAL: NEVER use WebFetch on docs.trendmicro.com
+## Files
 
-docs.trendmicro.com is a JavaScript SPA. WebFetch returns EMPTY SHELLS - no content.
-ALWAYS use the Playwright executor below. There are NO exceptions to this rule.
+```
+trend-docs/
+  SKILL.md          Claude agent instructions (workflow, rules, examples)
+  executor.py       Playwright extractor (self-installing deps)
+  doc-slugs.yaml    Topic-to-URL index for known pages (skip WebSearch)
+  cache/            Auto-created: .md extracts + .hash/.ihash sidecars
+```
 
-## Source Trust Order
-
-When multiple sources cover the same topic, trust them in this order:
-1. **docs.trendmicro.com** (OLH - most up to date)
-2. **success.trendmicro.com** (KBs - good for troubleshooting, workarounds)
-3. **PDF guides** (admin guides, install guides, best practice guides - may be older)
-
-## CRITICAL: Never Assume Product Equivalence
-
-Trend Micro has dozens of distinct products. NEVER conflate them. When search results
-return docs about Product A but the user asked about Product B, do NOT present Product A
-info as if it answers the question. Instead:
-
-1. Check: do the results actually match the product the user asked about?
-2. If no match: re-search with different terms (product name, abbreviation, feature name)
-3. If still no match: say "I couldn't find docs specifically for [product/feature]" and
-   ask the user to clarify - do NOT fill in the gap with a guess
-
-Example of what NOT to do: user asks about "Service Gateway pcap" -> results are all
-about DDI packet capture -> do NOT say "Service Gateway hosts DDI" and present DDI docs.
-Service Gateway and DDI are completely different products.
-
-## Completeness Rule
-
-When the user asks about a topic, get the COMPLETE answer. Do not stop at one page
-and ask "want me to get more?". Follow references to related pages that complete the
-picture. Examples:
-
-- "what actions are available for Gmail?" -> get the actions-for-different-services page
-  that covers ALL policy types (malware, spam, DLP, file blocking, web rep, virtual
-  analyzer), not just the first page you find about spam
-- "how does ZTSA work?" -> get the overview AND the setup pages
-- "what are the API endpoints for X?" -> get the full API reference, not just the intro
-
-Use multiple WebSearches if needed to find the right pages. The user expects a complete
-answer, not a partial one with a follow-up question.
-
-## CRITICAL: Save Files + Notify User
-
-- **All downloaded docs and report files MUST be saved to `~/Downloads/`**
-- **ALWAYS tell the user where files were saved** - include the full path in your response
-- Never save to /tmp, $TEMP, or other temp directories
-- The executor handles PDF saves automatically (prints `[SAVED] filename -> path`)
-
-## Workflow
-
-1. **WebSearch** to find relevant page URLs (search ALL of trendmicro.com, not just one subdomain):
-   ```
-   WebSearch: site:trendmicro.com "<query terms>"
-   ```
-
-2. **Extract content** - the executor handles BOTH HTML pages and PDFs:
-
-   **For any trendmicro.com URL** (HTML or PDF - executor auto-detects):
-   ```bash
-   python ~/.claude/skills/trend-docs/executor.py --urls "URL1,URL2,URL3" --max-pages 5
-   ```
-
-   PDF URLs (.pdf) are automatically:
-   - Downloaded via Playwright (handles Akamai cookie redirects that break curl)
-   - Saved to ~/Downloads/
-   - Text extracted with PyPDF2 and returned as markdown
-
-   **Note:** `curl` fails on docs.trendmicro.com PDFs (Akamai CDN redirect loop, exit 47).
-   The `ohc.blob.core.windows.net` PDFs work with curl but use the executor for consistency.
-
-3. **Present findings** to the user. ALWAYS include both parts:
-
-   **Summary** - Concise answer in your own words. Use tables, bullet points, and
-   headings to organize. Don't dump raw extracted text - synthesize it.
-
-   **Sources** - List every page you extracted from, at the end:
-   ```
-   Sources:
-   - [Page Title (OLH)](https://docs.trendmicro.com/...)
-   - [Article Title (KB)](https://success.trendmicro.com/...)
-   ```
-   Label each source type: OLH, KB, or PDF. This lets the user click through to verify.
-
-   **File Saves** - If any files were downloaded/generated, list them:
-   ```
-   Files saved:
-   - ~/Downloads/ddan_7.6_idg.pdf
-   - ~/Downloads/dd-ports-reference.md
-   ```
-
-## Best Practice Guides Index
-
-Master list of all Trend Micro product best practice guides (PDFs):
-**https://success.trendmicro.com/en-US/solution/KA-0007901**
-
-Use this page when the user asks about best practices for any Trend Micro product.
-Extract with executor.py first to get PDF download links, then download and read the PDFs.
-
-## Usage Examples
+## Usage
 
 ```bash
+# Extract by URL
+python executor.py "https://docs.trendmicro.com/en-us/.../trend-vision-one-workbench"
+
+# Extract by slug (OLH shorthand)
+python executor.py "trend-vision-one-workbench"
+
 # Batch URLs from WebSearch results
-python ~/.claude/skills/trend-docs/executor.py --urls "https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-actions-different-services,https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-advanced-spam-protection"
+python executor.py --urls "URL1,URL2,URL3" --max-pages 5
 
-# Single URL
-python ~/.claude/skills/trend-docs/executor.py "https://docs.trendmicro.com/en-us/documentation/article/trend-vision-one-workbench"
+# Topic lookup -- resolves keyword to known URLs, serves from cache
+python executor.py --topic "firewall policy"
+python executor.py --topic "sep anti-malware"    # fetches 7-page bundle
 
-# Slug shorthand (OLH only)
-python ~/.claude/skills/trend-docs/executor.py "trend-vision-one-workbench"
+# Force fresh fetch (bypass 30-day cache)
+python executor.py --no-cache --topic "endpoint security policies"
 ```
+
+## Cache
+
+Pages cached as `.md` in `cache/`. Cached pages return in <0.1s vs ~15s for Playwright.
+
+| File | Purpose |
+|------|---------|
+| `slug.md` | Extracted markdown content |
+| `slug.md.hash` | MD5 of markdown (set on write) |
+| `slug.md.ihash` | MD5 of live page content (set by --check-cache) |
+
+**TTL:** 30 days. Docs rarely change.
+
+### Detect Changes
+
+```bash
+# First run seeds hashes, subsequent runs detect changes
+python executor.py --check-cache
+
+# Auto-refresh changed pages in one pass
+python executor.py --check-cache --refresh
+
+# Check only a topic bundle
+python executor.py --check-cache --topic "sep policy"
+```
+
+Hashes 4 signals per page (title, meta description, article body, related links sidebar).
+Excludes nav chrome and user session elements to prevent false positives.
+
+## Topic Bundles
+
+`doc-slugs.yaml` maps keywords to OLH slugs. Bundles fetch all pages at once:
+
+```yaml
+# Single page
+firewall policy: trend-vision-one-firewall-policy-settings
+
+# Bundle -- all 7 pages fetched in one call
+sep anti-malware:
+  - trend-vision-one-policies-anti-malware
+  - trend-vision-one-anti-malware-policy-settings
+  - trend-vision-one-configuring-real-time-scan-settings
+  # ... (see doc-slugs.yaml for full list)
+```
+
+Add entries for pages you access frequently.
 
 ## Output
 
-Clean markdown with:
-- Page title as heading
-- Source URL for each page
-- Content: paragraphs, tables, lists, code blocks
-- Related pages (parent/sibling/child) with type labels
-- Section dividers between pages
+Clean markdown per page with title, source URL, content (paragraphs, tables, links, code blocks), and related pages. Multiple pages separated by `---`.

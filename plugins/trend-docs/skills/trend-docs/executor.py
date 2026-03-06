@@ -28,6 +28,8 @@ import argparse
 import logging
 import io
 import time
+import hashlib
+import json
 from pathlib import Path
 
 # Force UTF-8 output on Windows
@@ -66,6 +68,234 @@ BROWSER_ARGS = [
     "--no-first-run",
     "--disable-sync",
 ]
+
+
+# ============ Cache ============
+
+CACHE_DIR = Path(__file__).parent / "cache"
+CACHE_DIR.mkdir(exist_ok=True)
+CACHE_MAX_AGE = 2592000  # 30 days (docs rarely change)
+SLUG_INDEX_PATH = Path(__file__).parent / "doc-slugs.yaml"
+
+
+def url_to_cache_key(url):
+    """Convert URL to cache filename. Uses slug for OLH, hash for others."""
+    if "docs.trendmicro.com" in url and "/article/" in url:
+        slug = url.rstrip("/").split("/")[-1].split("#")[0].split("?")[0]
+        return slug + ".md"
+    return hashlib.md5(url.encode()).hexdigest()[:16] + ".md"
+
+
+def cache_get(url):
+    """Return cached content if fresh, else None."""
+    key = url_to_cache_key(url)
+    path = CACHE_DIR / key
+    if path.exists():
+        age = time.time() - path.stat().st_mtime
+        if age < CACHE_MAX_AGE:
+            content = path.read_text(encoding="utf-8")
+            log.info(f"  [cache HIT] {key} ({age:.0f}s old)")
+            return content
+        else:
+            log.info(f"  [cache STALE] {key} ({age:.0f}s old, max {CACHE_MAX_AGE}s)")
+    return None
+
+
+def cache_put(url, content):
+    """Write content to cache, with content hash sidecar for freshness checks."""
+    key = url_to_cache_key(url)
+    path = CACHE_DIR / key
+    path.write_text(content, encoding="utf-8")
+    h = hashlib.md5(content.encode("utf-8")).hexdigest()
+    (CACHE_DIR / (key + ".hash")).write_text(h, encoding="utf-8")
+    log.info(f"  [cache WRITE] {key} ({len(content)} chars, hash={h[:8]})")
+
+
+def check_cache_freshness(topics=None, refresh=False):
+    """Check cached pages for content changes. Launches one Playwright session,
+    navigates to each cached URL, hashes the rendered innerText, compares to stored hash.
+    If refresh=True, re-extracts pages that changed."""
+    from playwright.sync_api import sync_playwright
+
+    # Collect cached pages to check
+    cache_files = sorted(CACHE_DIR.glob("*.md"))
+    if not cache_files:
+        print("No cached pages found.")
+        return
+
+    # If topics specified, filter to those topic bundles
+    if topics:
+        index = load_slug_index()
+        target_keys = set()
+        for t in topics:
+            urls = resolve_topic(t)
+            if urls:
+                for u in urls:
+                    target_keys.add(url_to_cache_key(u))
+        cache_files = [f for f in cache_files if f.name in target_keys]
+
+    if not cache_files:
+        print("No cached pages match the specified topics.")
+        return
+
+    # Build URL list from cache files (extract Source: URL from each .md)
+    # Uses .ihash (innerText hash) sidecar -- separate from .hash (markdown hash)
+    pages_to_check = []
+    for cf in cache_files:
+        ihash_path = CACHE_DIR / (cf.name + ".ihash")
+        stored_ihash = ihash_path.read_text(encoding="utf-8").strip() if ihash_path.exists() else None
+        # Extract source URL from cached markdown (line 2: "Source: https://...")
+        source_url = None
+        for line in cf.read_text(encoding="utf-8").splitlines()[:5]:
+            if line.startswith("Source: http"):
+                source_url = line[8:].strip()
+                break
+        if source_url and is_olh(source_url):
+            pages_to_check.append((cf.name, source_url, stored_ihash))
+
+    if not pages_to_check:
+        print("No OLH pages with source URLs found in cache.")
+        return
+
+    print(f"Checking {len(pages_to_check)} cached page(s) for changes...")
+
+    # Hash scope: main content + related-pages sidebar + page title/meta.
+    # Excludes nav chrome, footer, user menu (session-specific = false positives).
+    HASH_JS = """() => {
+        let parts = [];
+        // Page title (catches renames)
+        parts.push(document.title || "");
+        // Meta description (catches summary edits)
+        const meta = document.querySelector('meta[name="description"]');
+        if (meta) parts.push(meta.getAttribute("content") || "");
+        // Main content body (the article text)
+        const main = document.querySelector(".main-content");
+        if (main) parts.push(main.innerText.trim());
+        // Related pages sidebar (catches new/removed child/sibling pages)
+        const menu = document.querySelector(".article-menu");
+        if (menu) parts.push(menu.innerText.trim());
+        return parts.join("\\n---\\n");
+    }"""
+
+    changed = []
+    unchanged = []
+    errors = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True, args=BROWSER_ARGS)
+        context = browser.new_context(user_agent=UA, java_script_enabled=True)
+
+        for name, url, stored_ihash in pages_to_check:
+            try:
+                page = context.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                try:
+                    page.wait_for_selector(".main-content", timeout=8000)
+                except Exception:
+                    pass
+                page.wait_for_timeout(500)
+
+                text = page.evaluate(HASH_JS)
+                page.close()
+
+                if not text or len(text) < 50:
+                    errors.append((name, "empty content"))
+                    continue
+
+                live_hash = hashlib.md5(text.encode("utf-8")).hexdigest()
+                ihash_path = CACHE_DIR / (name + ".ihash")
+
+                if stored_ihash and live_hash == stored_ihash:
+                    unchanged.append(name)
+                    log.info(f"  [OK] {name} unchanged")
+                elif stored_ihash:
+                    changed.append((name, url))
+                    log.info(f"  [CHANGED] {name} (stored={stored_ihash[:8]} live={live_hash[:8]})")
+                    # Update ihash to current live content
+                    ihash_path.write_text(live_hash, encoding="utf-8")
+                else:
+                    # First check -- seed the ihash from live content
+                    ihash_path.write_text(live_hash, encoding="utf-8")
+                    unchanged.append(name)
+                    log.info(f"  [SEEDED] {name} (first check, hash={live_hash[:8]})")
+            except Exception as e:
+                errors.append((name, str(e)))
+                log.info(f"  [ERROR] {name}: {e}")
+
+        # Refresh changed pages if requested
+        if refresh and changed:
+            print(f"\nRefreshing {len(changed)} changed page(s)...")
+            for name, url in changed:
+                page = context.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=15000)
+                result = wait_and_extract(page, url)
+                page.close()
+                if result["content"] and len(result["content"]) > 100:
+                    section = "# " + result["title"] + "\nSource: " + url + "\n\n" + result["content"]
+                    cache_put(url, section)
+                    print(f"  [REFRESHED] {name}")
+
+        browser.close()
+
+    # Summary
+    print(f"\n{'='*50}")
+    print(f"Cache check: {len(pages_to_check)} pages")
+    print(f"  Unchanged: {len(unchanged)}")
+    print(f"  Changed:   {len(changed)}")
+    print(f"  Errors:    {len(errors)}")
+    if changed and not refresh:
+        print(f"\nStale pages (re-run with --refresh to update):")
+        for name, url in changed:
+            print(f"  {name}")
+    if errors:
+        print(f"\nErrors:")
+        for name, err in errors:
+            print(f"  {name}: {err}")
+
+
+def load_slug_index():
+    """Load doc-slugs.yaml topic->slug mapping. Returns dict or empty."""
+    if not SLUG_INDEX_PATH.exists():
+        return {}
+    try:
+        import yaml
+        with open(SLUG_INDEX_PATH, "r") as f:
+            data = yaml.safe_load(f) or {}
+        return data
+    except ImportError:
+        # Fallback: simple key: value parsing
+        index = {}
+        for line in SLUG_INDEX_PATH.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and ":" in line:
+                k, v = line.split(":", 1)
+                index[k.strip()] = v.strip().strip('"').strip("'")
+        return index
+    except Exception:
+        return {}
+
+
+def resolve_topic(topic):
+    """Look up a topic keyword in the slug index. Returns list of URLs or None.
+    Supports both single slugs (string) and bundles (list of slugs)."""
+    index = load_slug_index()
+    topic_lower = topic.lower().strip()
+
+    def slugs_to_urls(val):
+        """Convert a slug string or list of slugs to list of URLs."""
+        if isinstance(val, list):
+            return [OLH_BASE + s if not s.startswith("http") else s for s in val]
+        return [OLH_BASE + val if not val.startswith("http") else val]
+
+    # Exact match
+    if topic_lower in index:
+        return slugs_to_urls(index[topic_lower])
+    # Partial match
+    for key, val in index.items():
+        if topic_lower in key or key in topic_lower:
+            log.info(f"  [slug-index] '{topic}' matched '{key}'")
+            return slugs_to_urls(val)
+    return None
 
 
 # ============ Helpers ============
@@ -316,7 +546,7 @@ def extract_pdf_text(pdf_path, pages=None):
 
 # ============ Main ============
 
-def run_batch(urls, max_pages=10):
+def run_batch(urls, max_pages=10, use_cache=True):
     """Extract multiple URLs in parallel tabs within a single browser."""
     urls = [u.strip() for u in urls if u.strip()][:max_pages]
     if not urls:
@@ -329,52 +559,71 @@ def run_batch(urls, max_pages=10):
 
     output_sections = []
     t0 = time.time()
+    cache_hits = 0
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True, args=BROWSER_ARGS)
-        context = browser.new_context(user_agent=UA, java_script_enabled=True,
-                                       accept_downloads=True)
-
-        # Handle PDF downloads first
-        for i, url in enumerate(pdf_urls):
-            log.info(f"[pdf {i+1}] downloading {url}")
-            path, info = download_pdf_playwright(url, context)
-            if path:
-                log.info(f"  [pdf {i+1}] saved: {path}")
-                text = extract_pdf_text(path)
-                if text:
-                    output_sections.append(text)
-                # Always notify where PDF was saved
-                print(f"[SAVED] {info} -> {path}")
+    # Check cache for HTML URLs first
+    uncached_html = []
+    if use_cache:
+        for url in html_urls:
+            cached = cache_get(url)
+            if cached:
+                output_sections.append(cached)
+                cache_hits += 1
             else:
-                log.info(f"  [pdf {i+1}] FAILED: {info}")
+                uncached_html.append(url)
+    else:
+        uncached_html = html_urls
 
-        # Open all HTML pages in parallel tabs
-        tabs = []
-        for i, url in enumerate(html_urls):
-            log.info(f"[tab {i+1}] loading {url}")
-            page = context.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=20000)
-            tabs.append((page, url))
+    # Only launch browser if we have uncached HTML or PDF URLs
+    if uncached_html or pdf_urls:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True, args=BROWSER_ARGS)
+            context = browser.new_context(user_agent=UA, java_script_enabled=True,
+                                           accept_downloads=True)
 
-        # Extract from each tab (they've been loading in parallel)
-        for i, (page, url) in enumerate(tabs):
-            try:
-                result = wait_and_extract(page, url)
-                title = result.get("title", url)
-                body = result.get("content", "")
-                if "Article unavailable" in title or "window[" in body[:200]:
-                    log.info(f"  [{i+1}] SKIP: dead/broken ({title[:40]})")
-                elif body and len(body) > 50:
-                    section = "# " + title + "\nSource: " + url + "\n\n" + body
-                    output_sections.append(section)
+            # Handle PDF downloads first
+            for i, url in enumerate(pdf_urls):
+                log.info(f"[pdf {i+1}] downloading {url}")
+                path, info = download_pdf_playwright(url, context)
+                if path:
+                    log.info(f"  [pdf {i+1}] saved: {path}")
+                    text = extract_pdf_text(path)
+                    if text:
+                        output_sections.append(text)
+                    print(f"[SAVED] {info} -> {path}")
                 else:
-                    log.info(f"  [{i+1}] SKIP: too little content")
-            except Exception as e:
-                log.info(f"  [{i+1}] ERROR: {e}")
+                    log.info(f"  [pdf {i+1}] FAILED: {info}")
 
-        context.close()
-        browser.close()
+            # Open uncached HTML pages in parallel tabs
+            tabs = []
+            for i, url in enumerate(uncached_html):
+                log.info(f"[tab {i+1}] loading {url}")
+                page = context.new_page()
+                page.goto(url, wait_until="domcontentloaded", timeout=20000)
+                tabs.append((page, url))
+
+            # Extract from each tab
+            for i, (page, url) in enumerate(tabs):
+                try:
+                    result = wait_and_extract(page, url)
+                    title = result.get("title", url)
+                    body = result.get("content", "")
+                    if "Article unavailable" in title or "window[" in body[:200]:
+                        log.info(f"  [{i+1}] SKIP: dead/broken ({title[:40]})")
+                    elif body and len(body) > 50:
+                        section = "# " + title + "\nSource: " + url + "\n\n" + body
+                        output_sections.append(section)
+                        if use_cache:
+                            cache_put(url, section)
+                    else:
+                        log.info(f"  [{i+1}] SKIP: too little content")
+                except Exception as e:
+                    log.info(f"  [{i+1}] ERROR: {e}")
+
+            context.close()
+            browser.close()
+    elif cache_hits:
+        log.info(f"[cache] All {cache_hits} pages served from cache, no browser needed")
 
     elapsed = time.time() - t0
 
@@ -383,7 +632,7 @@ def run_batch(urls, max_pages=10):
     else:
         print("\n\n---\n\n".join(output_sections))
 
-    log.info(f"\n[done] {len(urls)} pages ({len(pdf_urls)} PDF, {len(html_urls)} HTML), {len(output_sections)} returned, {elapsed:.1f}s")
+    log.info(f"\n[done] {len(urls)} pages ({len(pdf_urls)} PDF, {len(html_urls)} HTML, {cache_hits} cached), {len(output_sections)} returned, {elapsed:.1f}s")
 
 
 def main():
@@ -392,22 +641,46 @@ def main():
     parser.add_argument("--urls", "-u", default=None, help="Comma-separated URLs (batch mode)")
     parser.add_argument("--max-pages", "-m", type=int, default=10, help="Max pages to fetch (default 10)")
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress messages")
+    parser.add_argument("--no-cache", action="store_true", help="Bypass cache, force fresh fetch")
+    parser.add_argument("--topic", "-t", default=None, help="Topic keyword to look up in slug index")
+    parser.add_argument("--check-cache", action="store_true", help="Check cached pages for content changes (launches browser)")
+    parser.add_argument("--refresh", action="store_true", help="With --check-cache: auto-refresh stale pages")
     args = parser.parse_args()
     if args.quiet:
         log.setLevel(logging.WARNING)
 
-    if args.urls:
+    use_cache = not args.no_cache
+
+    # --check-cache mode: verify cached pages are still current
+    if args.check_cache:
+        topics = [args.topic] if args.topic else None
+        check_cache_freshness(topics=topics, refresh=args.refresh)
+        return
+
+    # --topic mode: resolve topic to URL(s) via slug index (supports bundles)
+    if args.topic:
+        urls = resolve_topic(args.topic)
+        if urls:
+            log.info(f"[topic] '{args.topic}' -> {len(urls)} page(s)")
+            run_batch(urls, args.max_pages, use_cache=use_cache)
+        else:
+            print(f"Topic '{args.topic}' not found in slug index. Known topics:")
+            index = load_slug_index()
+            for key in sorted(index.keys()):
+                print(f"  {key}: {index[key]}")
+            sys.exit(1)
+    elif args.urls:
         url_list = [u.strip() for u in args.urls.split(",") if u.strip()]
-        run_batch(url_list, args.max_pages)
+        run_batch(url_list, args.max_pages, use_cache=use_cache)
     elif args.query:
         if is_url(args.query):
-            run_batch([args.query], args.max_pages)
+            run_batch([args.query], args.max_pages, use_cache=use_cache)
         elif is_slug(args.query):
-            run_batch([OLH_BASE + args.query], args.max_pages)
+            run_batch([OLH_BASE + args.query], args.max_pages, use_cache=use_cache)
         else:
             parser.error("Query must be a URL or slug. Use WebSearch for discovery, then pass URLs here.")
     else:
-        parser.error("Either a URL/slug or --urls is required")
+        parser.error("Either a URL/slug, --urls, or --topic is required")
 
 
 if __name__ == "__main__":
