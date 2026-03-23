@@ -18,183 +18,175 @@ keywords:
 
 # Cloud Claude
 
-Launch Claude Code on AWS EC2 spot instances. Fully automated -- from zero to running Claude in one command.
+Launch Claude Code on AWS EC2 spot instances. Fully automated.
 
-## Prerequisites
+## When to Use
 
-- AWS CLI configured (`aws configure` done, with a default region)
-- Claude Code running locally (for OAuth token extraction)
-- Git installed
+Trigger on: "launch cloud claude", "cloud instance", "spin up ec2", "remote claude", "/cloud-claude", "cloud-claude"
 
-## What This Skill Does Automatically
+## What Claude Does (ALL AUTOMATIC -- DO NOT ASK USER TO DO THESE)
 
-When the user says "launch cloud claude", "spin up a cloud instance", "cloud-claude", etc., do ALL of the following without asking:
-
-### 1. Check/Install Prerequisites
+### 1. Verify Prerequisites
 
 ```bash
-# Verify AWS CLI works
 aws sts get-caller-identity --query Account --output text
-
-# Verify Claude credentials exist locally
-cat ~/.claude/.credentials.json 2>/dev/null
+git --version
 ```
 
-If AWS CLI is not configured, tell the user to run `aws configure` first. If Claude credentials don't exist, the user needs to log into Claude Code first.
+If AWS CLI fails: tell user to run `aws configure` first. That's the only manual step.
 
-### 2. Clone the Repo (if not already present)
+### 2. Find or Clone the Repo
+
+Look for `claude-portable` in the user's projects directory. If not found:
 
 ```bash
-PROJ_DIR="$HOME/claude-portable"  # or wherever projects live
-if [ ! -d "$PROJ_DIR" ]; then
-  git clone https://github.com/grobomo/claude-portable.git "$PROJ_DIR"
-fi
-cd "$PROJ_DIR"
+git clone https://github.com/grobomo/claude-portable.git "$HOME/claude-portable"
 ```
+
+Set `PROJ_DIR` to wherever it ends up.
 
 ### 3. Create SSH Key Pair (if needed)
 
 ```bash
 KEY_NAME="claude-portable-key"
-# Check if key pair exists in AWS
-if ! aws ec2 describe-key-pairs --key-names "$KEY_NAME" &>/dev/null; then
-  aws ec2 create-key-pair --key-name "$KEY_NAME" --query 'KeyMaterial' --output text > ~/.ssh/claude-portable.pem
-  chmod 600 ~/.ssh/claude-portable.pem
-  echo "Created SSH key pair: $KEY_NAME"
+if ! aws ec2 describe-key-pairs --key-names "$KEY_NAME" 2>/dev/null; then
+  mkdir -p "$HOME/.ssh"
+  aws ec2 create-key-pair --key-name "$KEY_NAME" --query 'KeyMaterial' --output text > "$HOME/.ssh/claude-portable.pem"
+  chmod 600 "$HOME/.ssh/claude-portable.pem"
 fi
 ```
 
-### 4. Write .env with Fresh OAuth Tokens
+Also find where the .pem file is (check `$HOME/.ssh/`, `$HOME/archive/.ssh/`, etc).
 
-Extract tokens from the user's running Claude Code session:
+### 4. Detect Auth Method and Write .env
 
+**Check in order:**
+
+1. **ANTHROPIC_API_KEY env var** -- if set, use API key mode
+2. **Claude credentials file** -- check these paths:
+   - `$HOME/.claude/.credentials.json` (Linux/Mac)
+   - `$USERPROFILE/.claude/.credentials.json` (Windows, via Git Bash)
+   - `$APPDATA/../.claude/.credentials.json` (Windows alternative)
+   If file exists and has `claudeAiOauth.accessToken`, use OAuth mode
+3. **Neither found** -- ask user: "Do you have an Anthropic API key, or are you on Claude Enterprise/Max?"
+   - API key: ask them to paste it
+   - Enterprise: ask them to run `claude` locally first to generate OAuth tokens
+
+**Write .env:**
+
+For API key mode:
 ```bash
-# Read local Claude credentials
-CREDS=$(cat ~/.claude/.credentials.json)
-ACCESS_TOKEN=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])")
-REFRESH_TOKEN=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['refreshToken'])")
-EXPIRES_AT=$(echo "$CREDS" | python3 -c "import json,sys; print(json.load(sys.stdin)['claudeAiOauth']['expiresAt'])")
+cat > "$PROJ_DIR/.env" << EOF
+ANTHROPIC_API_KEY=<the-key>
+REPO_URL=https://github.com/grobomo/claude-portable.git
+EOF
+```
 
-# Get GitHub token if available
-GH_TOKEN=$(gh auth token 2>/dev/null || echo "")
+For OAuth mode:
+```bash
+CREDS_FILE=<detected-path-to-.credentials.json>
+ACCESS_TOKEN=$(python3 -c "import json; print(json.load(open('$CREDS_FILE'))['claudeAiOauth']['accessToken'])")
+REFRESH_TOKEN=$(python3 -c "import json; print(json.load(open('$CREDS_FILE'))['claudeAiOauth']['refreshToken'])")
+EXPIRES_AT=$(python3 -c "import json; print(json.load(open('$CREDS_FILE'))['claudeAiOauth']['expiresAt'])")
+GH_TOKEN=$(gh auth token 2>/dev/null || echo "none")
 
-# Get the repo URL
-REPO_URL="https://github.com/grobomo/claude-portable.git"
-if [ -n "$GH_TOKEN" ]; then
-  REPO_URL="https://x-access-token:${GH_TOKEN}@github.com/grobomo/claude-portable.git"
-fi
-
-# Write .env
-cat > .env << ENVEOF
+cat > "$PROJ_DIR/.env" << EOF
 CLAUDE_OAUTH_ACCESS_TOKEN=$ACCESS_TOKEN
 CLAUDE_OAUTH_REFRESH_TOKEN=$REFRESH_TOKEN
 CLAUDE_OAUTH_EXPIRES_AT=$EXPIRES_AT
 GITHUB_TOKEN=$GH_TOKEN
-REPO_URL=$REPO_URL
-ENVEOF
+REPO_URL=https://github.com/grobomo/claude-portable.git
+EOF
 ```
 
-### 5. Launch the Instance
+### 5. Launch
 
 ```bash
-# Use --name if user specified one, otherwise auto-generate
-./run.sh --name <name>
+cd "$PROJ_DIR"
+bash run.sh --name <name>
 ```
 
-### 6. Wait for Container to Be Ready
+Use `--name` from user request, or default to something like "dev" or "box1".
 
-After the CF stack completes, the Docker image still needs to build (~2-3 min). Poll until container is running:
+### 6. Wait for Container
+
+The CF stack takes ~2-3 min, then Docker builds ~2-3 min more. Poll:
 
 ```bash
-SSH_KEY="~/.ssh/claude-portable.pem"
-# Get IP from stack outputs
+SSH_KEY="$HOME/.ssh/claude-portable.pem"
 IP=$(aws cloudformation describe-stacks --stack-name "claude-portable-<name>" \
   --query "Stacks[0].Outputs[?OutputKey=='PublicIP'].OutputValue" --output text)
 
-# Wait for Docker container
 for i in $(seq 1 30); do
   STATUS=$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i "$SSH_KEY" ubuntu@$IP \
     "docker ps --filter name=claude-portable --format '{{.Status}}'" 2>/dev/null || echo "")
-  if [[ "$STATUS" == Up* ]]; then
-    echo "Container is running!"
-    break
-  fi
+  if [[ "$STATUS" == Up* ]]; then break; fi
   sleep 10
 done
 ```
 
-### 7. Push Fresh Credentials to Container
+### 7. Push Fresh Credentials
+
+**OAuth mode only** (API key is baked into .env at build time):
 
 ```bash
-# The .env tokens may be stale by the time container builds. Push fresh ones.
-CREDS=$(cat ~/.claude/.credentials.json)
+CREDS=$(cat "$CREDS_FILE")
 ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ubuntu@$IP \
   "docker exec claude-portable bash -c 'cat > /home/claude/.claude/.credentials.json << CREDEOF
 $CREDS
 CREDEOF'"
 ```
 
-### 8. Set Up Trusted Directories
+### 8. Set Trusted Directories
 
 ```bash
-ssh -i "$SSH_KEY" ubuntu@$IP 'docker exec -u root claude-portable python3 -c "
+ssh -i "$SSH_KEY" ubuntu@$IP 'docker exec -u root claude-portable python3 << PYEOF
 import json
-p = \"/home/claude/.claude/settings.local.json\"
+p = "/home/claude/.claude/settings.local.json"
 try: d = json.load(open(p))
 except: d = {}
-d[\"trustedDirectories\"] = [\"/workspace\", \"/home/claude\", \"/tmp\"]
-d[\"hasCompletedOnboarding\"] = True
-json.dump(d, open(p, \"w\"), indent=2)
-"'
+d["trustedDirectories"] = ["/workspace", "/home/claude", "/tmp"]
+d["hasCompletedOnboarding"] = True
+json.dump(d, open(p, "w"), indent=2)
+PYEOF'
 ```
 
-### 9. Open Terminal Tab (if on Windows Terminal)
+### 9. Open Terminal Tab
 
+Detect platform and open appropriately:
+
+**Windows Terminal:**
 ```bash
 wt.exe -w 0 new-tab --title "<name> ($IP)" ssh -o StrictHostKeyChecking=no -i "$SSH_KEY" ubuntu@$IP -t "docker exec -it claude-portable claude"
 ```
 
-On macOS/Linux, just print the SSH command.
+**macOS:**
+```bash
+osascript -e "tell application \"Terminal\" to do script \"ssh -o StrictHostKeyChecking=no -i $SSH_KEY ubuntu@$IP -t 'docker exec -it claude-portable claude'\""
+```
+
+**Linux / fallback:** print the command:
+```
+ssh -i ~/.ssh/claude-portable.pem ubuntu@<IP> -t 'docker exec -it claude-portable claude'
+```
 
 ## Management Commands
 
-When user says "list cloud instances":
+**"list cloud instances":**
 ```bash
-cd <project-dir> && bash list.sh
+cd "$PROJ_DIR" && bash list.sh
 ```
 
-When user says "terminate <name>" or "kill cloud instances":
+**"terminate <name>" / "kill all cloud instances":**
 ```bash
-cd <project-dir> && bash terminate.sh --name <name>
-# or
-cd <project-dir> && bash terminate.sh --all
+cd "$PROJ_DIR" && bash terminate.sh --name <name>
+cd "$PROJ_DIR" && bash terminate.sh --all
 ```
 
-When user says "push updates to cloud":
+**"push updates to cloud":**
 ```bash
-cd <project-dir> && bash push.sh --all
-# or for specific file:
-cd <project-dir> && bash push.sh scripts/msg.sh
+cd "$PROJ_DIR" && bash push.sh --all
 ```
 
-## Inter-Instance Messaging
-
-When user wants instances to communicate, deploy `msg` to instances:
-```bash
-cd <project-dir> && bash push.sh scripts/msg.sh
-```
-
-Then inside each instance:
-```bash
-msg send <other-instance> "message"
-msg inbox
-msg who
-```
-
-## Important Notes
-
-- Spot instances cost ~$0.03-0.06/hr for t3.large
-- OAuth tokens expire every ~5-6 hours -- push fresh credentials if session runs long
-- The container has Chrome + Xvfb for headless browser automation
-- Session logs persist in Docker volumes but are lost if the EC2 is terminated
-- Use `msg` for inter-instance communication (messages go through S3)
+**"refresh tokens on cloud instances":**
+Read fresh tokens from local credentials file, push to each running instance via SSH.
