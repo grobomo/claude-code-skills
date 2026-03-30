@@ -18,6 +18,11 @@
  *   node setup.js --sync           # sync modules from GitHub per modules.yaml
  *   node setup.js --sync --dry-run # preview sync without installing
  *   node setup.js --stats           # quick text summary of hook log
+ *   node setup.js --list            # show catalog vs installed modules
+ *   node setup.js --test            # run all test suites
+ *   node setup.js --uninstall       # remove hook-runner from system
+ *   node setup.js --uninstall --dry-run  # preview uninstall
+ *   node setup.js --uninstall --force    # also remove non-empty module dirs
  *   node setup.js --prune 7        # prune log entries older than 7 days
  *   node setup.js --prune 7 --dry-run
  *   node setup.js --version        # show version
@@ -1262,10 +1267,112 @@ function main() {
   var versionMode = args.indexOf("--version") !== -1 || args.indexOf("-v") !== -1;
   var pruneMode = args.indexOf("--prune") !== -1;
   var statsMode = args.indexOf("--stats") !== -1;
+  var listMode = args.indexOf("--list") !== -1;
+  var testMode = args.indexOf("--test") !== -1;
+  var uninstallMode = args.indexOf("--uninstall") !== -1;
 
   // --- Version ---
   if (versionMode) {
     console.log("hook-runner v" + VERSION);
+    return;
+  }
+
+  // --- Uninstall mode: remove hook-runner from settings.json and hooks dir ---
+  if (uninstallMode) {
+    console.log("[hook-runner] Uninstall");
+    console.log("========================");
+    if (dryRun) console.log("  (dry-run mode — no changes will be made)");
+    console.log("");
+    var uninstallChanges = [];
+
+    // 1. Remove hook-runner entries from settings.json
+    if (fs.existsSync(SETTINGS_PATH)) {
+      var settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, "utf-8"));
+      if (settings.hooks) {
+        var hookEvents = Object.keys(settings.hooks);
+        var runnerPattern = /run-(pretooluse|posttooluse|stop|sessionstart|userpromptsubmit)\.js/;
+        var keptEvents = {};
+        for (var ui = 0; ui < hookEvents.length; ui++) {
+          var evt = hookEvents[ui];
+          var entries = settings.hooks[evt];
+          if (!Array.isArray(entries)) { keptEvents[evt] = entries; continue; }
+          // Filter out hook-runner entries, keep non-runner entries
+          var kept = entries.filter(function(entry) {
+            var hooks = entry.hooks || [];
+            return !hooks.some(function(h) { return h.command && runnerPattern.test(h.command); });
+          });
+          if (kept.length > 0) {
+            keptEvents[evt] = kept;
+            uninstallChanges.push({ what: "settings.json " + evt, status: "kept " + kept.length + " non-runner entry(s)" });
+          } else {
+            uninstallChanges.push({ what: "settings.json " + evt, status: "removed" });
+          }
+        }
+        settings.hooks = keptEvents;
+        if (Object.keys(keptEvents).length === 0) delete settings.hooks;
+        if (!dryRun) {
+          fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
+        }
+      } else {
+        uninstallChanges.push({ what: "settings.json", status: "no hooks section found" });
+      }
+    } else {
+      uninstallChanges.push({ what: "settings.json", status: "not found" });
+    }
+
+    // 2. Remove runner files
+    var runnerFiles = ["run-pretooluse.js", "run-posttooluse.js", "run-stop.js", "run-sessionstart.js", "run-userpromptsubmit.js", "load-modules.js", "hook-log.js", "run-async.js", "setup.js"];
+    for (var uf = 0; uf < runnerFiles.length; uf++) {
+      var fp = path.join(HOOKS_DIR, runnerFiles[uf]);
+      if (fs.existsSync(fp)) {
+        if (!dryRun) fs.unlinkSync(fp);
+        uninstallChanges.push({ what: runnerFiles[uf], status: dryRun ? "would remove" : "removed" });
+      }
+    }
+
+    // 3. Remove run-modules directories (only if empty or --force)
+    var forceMode = args.indexOf("--force") !== -1;
+    var runModulesDir = path.join(HOOKS_DIR, "run-modules");
+    if (fs.existsSync(runModulesDir)) {
+      var eventDirs = ["PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"];
+      for (var ud = 0; ud < eventDirs.length; ud++) {
+        var evDir = path.join(runModulesDir, eventDirs[ud]);
+        if (!fs.existsSync(evDir)) continue;
+        var contents = fs.readdirSync(evDir);
+        if (contents.length === 0 || forceMode) {
+          if (!dryRun) fs.rmSync(evDir, { recursive: true });
+          uninstallChanges.push({ what: "run-modules/" + eventDirs[ud], status: (dryRun ? "would remove" : "removed") + (contents.length > 0 ? " (" + contents.length + " files)" : "") });
+        } else {
+          uninstallChanges.push({ what: "run-modules/" + eventDirs[ud], status: "kept (has " + contents.length + " module(s) — use --force to remove)" });
+        }
+      }
+      // Remove run-modules dir itself if empty
+      try {
+        var remaining = fs.readdirSync(runModulesDir);
+        if (remaining.length === 0) {
+          if (!dryRun) fs.rmdirSync(runModulesDir);
+          uninstallChanges.push({ what: "run-modules/", status: dryRun ? "would remove" : "removed" });
+        }
+      } catch(e) {}
+    }
+
+    // 4. Remove log files
+    var logFile = path.join(HOOKS_DIR, "hook-log.jsonl");
+    var logFile1 = logFile + ".1";
+    for (var lf = 0; lf < 2; lf++) {
+      var lfp = lf === 0 ? logFile : logFile1;
+      if (fs.existsSync(lfp)) {
+        if (!dryRun) fs.unlinkSync(lfp);
+        uninstallChanges.push({ what: path.basename(lfp), status: dryRun ? "would remove" : "removed" });
+      }
+    }
+
+    // Display results
+    for (var uc = 0; uc < uninstallChanges.length; uc++) {
+      console.log("  " + uninstallChanges[uc].what + ": " + uninstallChanges[uc].status);
+    }
+    console.log("");
+    console.log("[hook-runner] " + (dryRun ? "Dry-run complete. No changes made." : "Uninstall complete."));
     return;
   }
 
@@ -1320,6 +1427,161 @@ function main() {
     }
     if (!hasActivity) console.log("  No blocks or errors recorded.");
     console.log("");
+    return;
+  }
+
+  // --- List mode: show catalog vs installed modules ---
+  if (listMode) {
+    console.log("[hook-runner] Module List");
+    console.log("========================");
+
+    // Catalog modules (from repo modules/ directory)
+    var catalogDir = path.join(REPO_DIR, "modules");
+    var events = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionStart"];
+    var catalog = {};
+    var catalogCount = 0;
+    for (var li = 0; li < events.length; li++) {
+      var evDir = path.join(catalogDir, events[li]);
+      catalog[events[li]] = [];
+      try {
+        var files = fs.readdirSync(evDir).filter(function(f) { return f.endsWith(".js"); }).sort();
+        catalog[events[li]] = files;
+        catalogCount += files.length;
+      } catch(e) {}
+    }
+
+    // Installed modules (from live run-modules/)
+    var liveDir = path.join(HOOKS_DIR, "run-modules");
+    var installed = {};
+    var installedCount = 0;
+    for (var lj = 0; lj < events.length; lj++) {
+      var livEvDir = path.join(liveDir, events[lj]);
+      installed[events[lj]] = [];
+      try {
+        var livFiles = fs.readdirSync(livEvDir).filter(function(f) { return f.endsWith(".js"); }).sort();
+        installed[events[lj]] = livFiles;
+        installedCount += livFiles.length;
+      } catch(e) {}
+    }
+
+    // Display
+    for (var lk = 0; lk < events.length; lk++) {
+      var ev = events[lk];
+      var catMods = catalog[ev];
+      var instMods = installed[ev];
+      if (catMods.length === 0 && instMods.length === 0) continue;
+
+      console.log("");
+      console.log("  " + ev + ":");
+      var allMods = {};
+      for (var cm = 0; cm < catMods.length; cm++) allMods[catMods[cm]] = { catalog: true, installed: false };
+      for (var im = 0; im < instMods.length; im++) {
+        if (!allMods[instMods[im]]) allMods[instMods[im]] = { catalog: false, installed: false };
+        allMods[instMods[im]].installed = true;
+      }
+      var modNames = Object.keys(allMods).sort();
+      for (var mn = 0; mn < modNames.length; mn++) {
+        var m = allMods[modNames[mn]];
+        var status = m.installed && m.catalog ? " [installed]" :
+                     m.installed && !m.catalog ? " [installed, custom]" :
+                     " [available]";
+        console.log("    " + modNames[mn].replace(".js", "") + status);
+      }
+    }
+
+    // Also check for project-scoped modules in all event directories
+    var projScoped = [];
+    for (var pe = 0; pe < events.length; pe++) {
+      try {
+        var liveEvtDir = path.join(liveDir, events[pe]);
+        var liveEntries = fs.readdirSync(liveEvtDir, { withFileTypes: true });
+        var projDirs = liveEntries.filter(function(e) { return e.isDirectory(); });
+        for (var pd = 0; pd < projDirs.length; pd++) {
+          var projPath = path.join(liveEvtDir, projDirs[pd].name);
+          var projMods = fs.readdirSync(projPath).filter(function(f) { return f.endsWith(".js"); });
+          for (var pm = 0; pm < projMods.length; pm++) {
+            projScoped.push(events[pe] + "/" + projDirs[pd].name + "/" + projMods[pm].replace(".js", ""));
+          }
+        }
+      } catch(e) {}
+    }
+    if (projScoped.length > 0) {
+      console.log("");
+      console.log("  Project-scoped:");
+      for (var ps = 0; ps < projScoped.length; ps++) {
+        console.log("    " + projScoped[ps] + " [installed]");
+      }
+    }
+
+    console.log("");
+    console.log("[hook-runner] " + installedCount + " installed, " + catalogCount + " in catalog");
+    return;
+  }
+
+  // --- Test mode: run all test suites ---
+  if (testMode) {
+    console.log("[hook-runner] Test Suite");
+    console.log("========================");
+    var testDir = path.join(REPO_DIR, "scripts", "test");
+    var testFiles;
+    try {
+      testFiles = fs.readdirSync(testDir).filter(function(f) { return f.startsWith("test-") && f.endsWith(".sh"); }).sort();
+    } catch(e) {
+      console.log("  ERROR: test directory not found: " + testDir);
+      process.exit(1);
+    }
+    if (testFiles.length === 0) {
+      console.log("  No test scripts found in " + testDir);
+      process.exit(1);
+    }
+    var totalPass = 0, totalFail = 0, suiteFail = 0;
+    for (var ti = 0; ti < testFiles.length; ti++) {
+      var testPath = path.join(testDir, testFiles[ti]);
+      var suiteName = testFiles[ti].replace("test-", "").replace(".sh", "");
+      console.log("");
+      console.log("  [" + suiteName + "] " + testFiles[ti]);
+      try {
+        var result = cp.execSync("bash " + JSON.stringify(testPath), {
+          cwd: REPO_DIR,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+          timeout: 60000
+        });
+        // Parse results line: "=== Results: N passed, N failed ==="
+        var match = result.match(/(\d+) passed, (\d+) failed/);
+        if (match) {
+          totalPass += parseInt(match[1], 10);
+          totalFail += parseInt(match[2], 10);
+          if (parseInt(match[2], 10) > 0) suiteFail++;
+        }
+        // Show last few lines (results summary)
+        var lines = result.trim().split("\n");
+        var summaryLines = lines.slice(-3);
+        for (var sl = 0; sl < summaryLines.length; sl++) {
+          console.log("    " + summaryLines[sl]);
+        }
+      } catch(e) {
+        suiteFail++;
+        var errOut = (e.stdout || "") + (e.stderr || "");
+        var errLines = errOut.trim().split("\n").slice(-5);
+        for (var el = 0; el < errLines.length; el++) {
+          console.log("    " + errLines[el]);
+        }
+        // Try to parse partial results
+        var partMatch = errOut.match(/(\d+) passed, (\d+) failed/);
+        if (partMatch) {
+          totalPass += parseInt(partMatch[1], 10);
+          totalFail += parseInt(partMatch[2], 10);
+        }
+      }
+    }
+    console.log("");
+    console.log("========================");
+    console.log("[hook-runner] " + testFiles.length + " suites, " + totalPass + " passed, " + totalFail + " failed");
+    if (suiteFail > 0) {
+      console.log("[hook-runner] " + suiteFail + " suite(s) had failures");
+      process.exit(1);
+    }
     return;
   }
 
