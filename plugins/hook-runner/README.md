@@ -24,8 +24,11 @@ Replaces per-hook entries in `settings.json` with a runner + module system:
 | Command | Description |
 |---------|-------------|
 | `/hook-runner setup` | Full wizard: scan, report, backup, install, verify |
-| `/hook-runner report` | Generate HTML report of current hooks |
+| `/hook-runner report` | Generate HTML report of current hooks with hit counts |
 | `/hook-runner dry-run` | Preview changes without modifying anything |
+| `/hook-runner sync` | Sync modules from GitHub per `~/.claude/hooks/modules.yaml` |
+| `/hook-runner sync-dry-run` | Preview module sync without installing |
+| `/hook-runner health` | Verify all runners and modules load correctly |
 
 ## Source
 
