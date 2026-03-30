@@ -1,17 +1,47 @@
 # hook-runner
 
+[![Tests](https://github.com/grobomo/hook-runner/actions/workflows/test.yml/badge.svg)](https://github.com/grobomo/hook-runner/actions/workflows/test.yml)
+
 Modular hook runner system for Claude Code. One runner per event, modules in folders. Drop a `.js` file in a folder to add behavior — no settings.json editing needed.
 
-## Quick Start
+## Hooks Report (works for everyone)
+
+Even if you don't use hook-runner, you can generate a report of your existing hooks:
+
+```bash
+node setup.js --report          # generates an HTML report
+node setup.js --report --open   # generates and opens in browser
+```
+
+The report shows:
+- **Every hook** in your `settings.json` — event type, command, matchers, timeout
+- **File status** — whether referenced scripts exist (missing files highlighted in red)
+- **Source code** — expandable view of each hook script with line numbers
+- **Block/error stats** — which hooks are actually blocking tool calls (from `hook-log.jsonl`)
+- **Flow diagram** — visual timeline of hook events from session start to stop
+- **Search + filter** — find hooks by name instantly
+
+No installation required — just clone and run `node setup.js --report`.
+
+## Quick Start (full system)
 
 ```bash
 # Install via grobomo marketplace (if not already added)
 # In Claude Code: /install hook-runner
 
-# Run the setup wizard
+# Commands
 /hook-runner setup        # scan → report → backup → install → verify
 /hook-runner report       # just see current hooks (HTML report)
 /hook-runner dry-run      # preview changes without modifying anything
+/hook-runner health       # verify all runners and modules load correctly
+/hook-runner sync         # sync modules from GitHub per modules.yaml
+/hook-runner stats        # quick text summary of hook log activity
+/hook-runner list         # show catalog vs installed modules
+/hook-runner test         # run all test suites
+/hook-runner upgrade      # fetch latest from GitHub and update local copies
+/hook-runner uninstall    # preview clean removal (dry-run by default)
+/hook-runner prune        # prune log entries older than 7 days
+/hook-runner version      # show hook-runner version
 ```
 
 The setup wizard will:
@@ -25,11 +55,13 @@ The setup wizard will:
 
 ```
 ~/.claude/hooks/
+  report.js                     # HTML report generator
   load-modules.js              # shared loader (global + project-scoped)
   run-pretooluse.js            # PreToolUse runner
   run-posttooluse.js           # PostToolUse runner
   run-stop.js                  # Stop runner
   run-sessionstart.js          # SessionStart runner
+  run-userpromptsubmit.js      # UserPromptSubmit runner
   run-modules/
     PreToolUse/
       *.js                     # global modules (run for all projects)
@@ -75,13 +107,23 @@ Rules:
 | Event | Runner | Matchers | Module Return |
 |-------|--------|----------|---------------|
 | SessionStart | run-sessionstart.js | none | `{text: "..."}` |
+| UserPromptSubmit | run-userpromptsubmit.js | none | `{decision: "block"}` or `null` |
 | PreToolUse | run-pretooluse.js | Edit, Write, Bash | `{decision: "block"}` or `null` |
 | PostToolUse | run-posttooluse.js | Edit, Write | `{decision: "block"}` or `null` |
 | Stop | run-stop.js | none | `{decision: "block"}` or `null` |
 
 ## Logging
 
-Runners log every module invocation to `~/.claude/hooks/hook-log.jsonl`. Each line records the timestamp, event, module name, result (pass/block/error), and context (tool name, command snippet, project). The log auto-rotates at 10MB.
+Runners log every module invocation to `~/.claude/hooks/hook-log.jsonl`. Each line records the timestamp, event, module name, result (pass/block/error), and context (tool name, command snippet, project). The log auto-rotates at 10MB. Stats include both current and rotated log files.
+
+```bash
+/hook-runner stats             # quick text summary to stdout
+/hook-runner prune             # prune entries older than 7 days
+node setup.js --prune 3        # keep only last 3 days
+node setup.js --prune 7 --dry-run  # preview without deleting
+```
+
+The `--stats` command shows total invocations, block rate, and per-module hit counts — useful for CI or quick terminal checks without opening the HTML report.
 
 The setup report (`/hook-runner report`) reads the log and shows hit counts and sample triggers per module.
 
@@ -145,12 +187,20 @@ Full catalog in `modules/` directory:
 | `root-cause-gate` | Blocks retry/cleanup without root cause diagnosis |
 | `archive-not-delete` | Blocks `rm -rf`, forces `mv` to `archive/` |
 | `no-adhoc-commands` | Blocks raw aws/ssh/docker/kubectl, forces scripts/ |
+| `secret-scan-gate` | Blocks git commit if staged diff contains API keys, tokens, or passwords |
+| `no-hardcoded-paths` | Blocks Write/Edit with hardcoded absolute user paths in content |
 | `aws-tagging-gate` | Enforces required tags on AWS resource creation (env-configurable) |
+
+### UserPromptSubmit (processes user prompts)
+| Module | Description |
+|--------|-------------|
+| `prompt-logger` | Logs prompts to `~/.claude/hooks/prompt-log.jsonl` for audit (never blocks) |
 
 ### PostToolUse (checks after tool execution)
 | Module | Description |
 |--------|-------------|
 | `rule-hygiene` | Validates rule files are single-topic, under 20 lines |
+| `commit-msg-check` | Blocks WIP/fixup commits and over-long first lines (>72 chars) |
 
 ### Stop (controls session ending)
 | Module | Description |
@@ -162,3 +212,4 @@ Full catalog in `modules/` directory:
 | Module | Description |
 |--------|-------------|
 | `load-instructions` | Injects working instructions at session start |
+| `backup-check` | Async — warns if claude-backup is stale (>72h) or missing |
