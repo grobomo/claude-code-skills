@@ -38,6 +38,7 @@ modules:
   PostToolUse:
     - rule-hygiene           # validates rule files are granular
     - commit-msg-check       # blocks WIP/fixup commits and over-long first lines
+    - test-coverage-check    # warns when source files with tests are modified
 
   Stop:
     - auto-continue          # never stop, always find next task
@@ -45,6 +46,7 @@ modules:
 
   SessionStart:
     - load-instructions      # inject working instructions at session start
+    - project-health         # run health check on session start, warn about issues
     # - backup-check         # async: warn if claude-backup is stale (>72h)
 
 # Project-scoped modules (optional)
