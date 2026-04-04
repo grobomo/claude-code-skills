@@ -8,3 +8,4 @@ registries/
 *.log
 .env
 *.tmp
+plugins/hook-runner/workflows/archive_nested_dup/
