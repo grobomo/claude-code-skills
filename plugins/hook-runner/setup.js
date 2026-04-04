@@ -46,7 +46,7 @@ var SCRIPT_DIR = __dirname;
 var REPO_DIR = SCRIPT_DIR;
 
 var HOOK_LOG_PATH = path.join(HOOKS_DIR, "hook-log.jsonl");
-var VERSION = "1.5.0";
+var VERSION = "1.5.1";
 
 // ============================================================
 // 0. Hook Log Stats
@@ -561,6 +561,12 @@ function parseModulesYaml(content) {
  * Fetch a file from GitHub raw content via curl.
  */
 function fetchFromGitHub(source, branch, filePath) {
+  // Sanitize inputs to prevent command injection via modules.yaml
+  var safe = /^[a-zA-Z0-9._\-\/]+$/;
+  if (![source, branch, filePath].every(function(s) { return safe.test(s); })) {
+    console.log("  [WARN] Invalid characters in GitHub path, skipping");
+    return null;
+  }
   var url = "https://raw.githubusercontent.com/" + source + "/" + branch + "/" + filePath;
   try {
     return cp.execSync('curl -fsSL "' + url + '"', { encoding: "utf-8", timeout: 15000 });
@@ -667,6 +673,8 @@ function syncModules(dryRun) {
 // ============================================================
 
 function openFile(filePath) {
+  // Sanitize path to prevent command injection
+  if (!/^[a-zA-Z0-9._\-\/\\: ]+$/.test(filePath)) return;
   try {
     if (process.platform === "win32") {
       cp.execSync('start "" "' + filePath + '"', { stdio: "ignore" });
