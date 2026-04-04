@@ -46,7 +46,7 @@ var SCRIPT_DIR = __dirname;
 var REPO_DIR = SCRIPT_DIR;
 
 var HOOK_LOG_PATH = path.join(HOOKS_DIR, "hook-log.jsonl");
-var VERSION = "1.4.0";
+var VERSION = "1.5.0";
 
 // ============================================================
 // 0. Hook Log Stats
@@ -692,6 +692,9 @@ function cmdHelp() {
   console.log("  --sync          Sync modules from GitHub per ~/.claude/hooks/modules.yaml");
   console.log("  --list          Show catalog vs installed modules with status");
   console.log("  --stats         Quick text summary of hook log activity");
+  console.log("  --workflow      Manage enforceable step pipelines (list|start|status|complete|reset)");
+  console.log("  --export [file] Export installed modules as shareable YAML (default: modules-export.yaml)");
+  console.log("  --perf          Analyze module timing data and identify bottlenecks");
   console.log("  --test          Run all test suites");
   console.log("  --upgrade       Fetch latest runners from GitHub and update local copies");
   console.log("  --uninstall     Remove hook-runner from settings.json and hooks dir");
@@ -1178,6 +1181,240 @@ function cmdWizard(reportOnly, dryRun, openMode) {
   console.log("============================================");
 }
 
+function cmdPerf() {
+  console.log("[hook-runner] Performance Analysis");
+  console.log("========================");
+  var hs = readHookStats(0);
+  var hsKeys = Object.keys(hs).sort();
+
+  // Group by event
+  var events = {};
+  var timed = [];
+  for (var i = 0; i < hsKeys.length; i++) {
+    var key = hsKeys[i];
+    var st = hs[key];
+    var parts = key.split("/");
+    var evt = parts[0];
+    if (!events[evt]) events[evt] = { modules: [], totalAvg: 0, count: 0 };
+    if (st.msCount > 0) {
+      var avg = Math.round(st.msTotal / st.msCount);
+      var entry = { key: key, name: parts.slice(1).join("/"), avg: avg, max: st.msMax, count: st.msCount, total: st.total };
+      events[evt].modules.push(entry);
+      events[evt].totalAvg += avg;
+      events[evt].count++;
+      timed.push(entry);
+    }
+  }
+
+  if (timed.length === 0) {
+    console.log("  No timing data yet. Timing is recorded after v1.4.0 runners are installed.");
+    console.log("  Run some tool calls, then check again.");
+    return;
+  }
+
+  // Per-event overhead
+  var evtNames = Object.keys(events).sort();
+  console.log("\n  Estimated overhead per event (sum of avg module times):");
+  for (var j = 0; j < evtNames.length; j++) {
+    var ev = events[evtNames[j]];
+    if (ev.count === 0) continue;
+    console.log("    " + evtNames[j] + ": ~" + ev.totalAvg + "ms (" + ev.count + " modules)");
+  }
+
+  // Slow modules (>5ms avg)
+  timed.sort(function(a, b) { return b.avg - a.avg; });
+  var slow = timed.filter(function(t) { return t.avg > 5; });
+  if (slow.length > 0) {
+    console.log("\n  Slow modules (>5ms avg):");
+    for (var k = 0; k < slow.length; k++) {
+      var s = slow[k];
+      var note = "";
+      if (s.max > 100) note = "  *** spikes to " + s.max + "ms";
+      console.log("    " + s.key + "  avg:" + s.avg + "ms  max:" + s.max + "ms  (" + s.count + " calls)" + note);
+    }
+  } else {
+    console.log("\n  All modules under 5ms avg — no bottlenecks detected.");
+  }
+
+  // Total tool call overhead estimate (PreToolUse is on every tool call)
+  if (events.PreToolUse && events.PreToolUse.totalAvg > 0) {
+    console.log("\n  PreToolUse total overhead: ~" + events.PreToolUse.totalAvg + "ms per tool call");
+    if (events.PreToolUse.totalAvg > 50) {
+      console.log("  WARNING: >50ms overhead. Consider disabling unused modules.");
+    } else if (events.PreToolUse.totalAvg > 20) {
+      console.log("  NOTE: 20-50ms range. Acceptable but monitor for growth.");
+    } else {
+      console.log("  OK: <20ms. Minimal impact on tool call latency.");
+    }
+  }
+  console.log("");
+}
+
+function cmdExport(args) {
+  var outFile = null;
+  for (var i = 0; i < args.length; i++) {
+    if (args[i] === "--export" && args[i + 1] && !args[i + 1].startsWith("--")) {
+      outFile = args[i + 1]; break;
+    }
+  }
+  if (!outFile) outFile = "modules-export.yaml";
+
+  var EVENTS = ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SessionStart"];
+  var modulesDir = path.join(HOOKS_DIR, "run-modules");
+  var lines = [];
+  lines.push("# hook-runner module configuration (exported " + new Date().toISOString().slice(0, 10) + ")");
+  lines.push("# Import: copy to ~/.claude/hooks/modules.yaml then run: node setup.js --sync");
+  lines.push("");
+  lines.push("source: grobomo/hook-runner");
+  lines.push("branch: main");
+  lines.push("");
+  lines.push("modules:");
+
+  var projectModules = {};
+
+  for (var e = 0; e < EVENTS.length; e++) {
+    var evt = EVENTS[e];
+    var evtDir = path.join(modulesDir, evt);
+    if (!fs.existsSync(evtDir)) continue;
+
+    var globalMods = [];
+    var entries = fs.readdirSync(evtDir);
+    entries.sort();
+    for (var f = 0; f < entries.length; f++) {
+      var entry = entries[f];
+      var full = path.join(evtDir, entry);
+      if (entry.endsWith(".js") && fs.statSync(full).isFile()) {
+        globalMods.push(entry.replace(/\.js$/, ""));
+      } else if (fs.statSync(full).isDirectory() && entry !== "archive") {
+        // Project-scoped modules
+        var projName = entry;
+        if (!projectModules[projName]) projectModules[projName] = {};
+        if (!projectModules[projName][evt]) projectModules[projName][evt] = [];
+        var projFiles = fs.readdirSync(full).filter(function(pf) { return pf.endsWith(".js"); }).sort();
+        for (var pf = 0; pf < projFiles.length; pf++) {
+          projectModules[projName][evt].push(projFiles[pf].replace(/\.js$/, ""));
+        }
+      }
+    }
+
+    if (globalMods.length > 0) {
+      lines.push("  " + evt + ":");
+      for (var g = 0; g < globalMods.length; g++) {
+        lines.push("    - " + globalMods[g]);
+      }
+    }
+  }
+
+  // Project-scoped modules
+  var projNames = Object.keys(projectModules).sort();
+  if (projNames.length > 0) {
+    lines.push("");
+    lines.push("project_modules:");
+    for (var p = 0; p < projNames.length; p++) {
+      lines.push("  " + projNames[p] + ":");
+      var projEvts = Object.keys(projectModules[projNames[p]]).sort();
+      for (var pe = 0; pe < projEvts.length; pe++) {
+        lines.push("    " + projEvts[pe] + ":");
+        var mods = projectModules[projNames[p]][projEvts[pe]];
+        for (var m = 0; m < mods.length; m++) {
+          lines.push("      - " + mods[m]);
+        }
+      }
+    }
+  }
+
+  lines.push("");
+  var content = lines.join("\n");
+  fs.writeFileSync(outFile, content);
+  console.log("[hook-runner] Exported module config to " + outFile);
+  console.log("  Share this file — others can import with: cp " + outFile + " ~/.claude/hooks/modules.yaml && node setup.js --sync");
+}
+
+function cmdWorkflow(args) {
+  var wf;
+  try { wf = require(path.join(__dirname, "workflow.js")); } catch(e) {
+    console.error("[workflow] workflow.js not found in hook-runner directory.");
+    process.exit(1);
+  }
+  var sub = null;
+  for (var i = 0; i < args.length; i++) {
+    if (args[i] === "--workflow") { sub = args[i + 1] || null; break; }
+  }
+  var projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
+
+  if (!sub || sub === "list") {
+    var workflows = wf.findWorkflows(projectDir);
+    if (workflows.length === 0) { console.log("No workflows found."); return; }
+    for (var wi = 0; wi < workflows.length; wi++) {
+      var w = workflows[wi];
+      console.log(w.name + " (" + w.steps.length + " steps) — " + (w.description || ""));
+      for (var si = 0; si < w.steps.length; si++) {
+        console.log("  " + w.steps[si].id + ": " + w.steps[si].name);
+      }
+    }
+    return;
+  }
+
+  if (sub === "start") {
+    var wfName = args[args.indexOf("start") + 1];
+    if (!wfName) { console.error("Usage: --workflow start <name>"); process.exit(1); }
+    var existing = wf.readState(projectDir);
+    if (existing) { console.error('Workflow "' + existing.workflow + '" already active. Reset first.'); process.exit(1); }
+    var workflows = wf.findWorkflows(projectDir);
+    var target = null;
+    for (var fi = 0; fi < workflows.length; fi++) {
+      if (workflows[fi].name === wfName) { target = workflows[fi]; break; }
+    }
+    if (!target) { console.error("Workflow not found: " + wfName); process.exit(1); }
+    wf.initState(wfName, target._path, projectDir);
+    var current = wf.currentStep(projectDir);
+    console.log('Started workflow "' + wfName + '". Current step: ' + current);
+    return;
+  }
+
+  if (sub === "status") {
+    var state = wf.readState(projectDir);
+    if (!state) { console.log("No active workflow."); return; }
+    console.log("Workflow: " + state.workflow);
+    console.log("Started:  " + state.started_at);
+    console.log("");
+    var def = wf.loadWorkflow(state.workflow_path);
+    var current = wf.currentStep(projectDir);
+    for (var di = 0; di < def.steps.length; di++) {
+      var step = def.steps[di];
+      var s = state.steps[step.id] || {};
+      var marker = "  ";
+      if (s.status === "completed") marker = "OK";
+      else if (step.id === current) marker = ">>";
+      var status = s.status || "pending";
+      console.log(marker + " " + step.id.padEnd(20) + status.padEnd(14) + step.name);
+    }
+    return;
+  }
+
+  if (sub === "complete") {
+    var stepId = args[args.indexOf("complete") + 1];
+    if (!stepId) { console.error("Usage: --workflow complete <step-id>"); process.exit(1); }
+    wf.completeStep(stepId, projectDir);
+    var next = wf.currentStep(projectDir);
+    console.log('Completed step "' + stepId + '".' + (next ? " Next: " + next : " Workflow complete!"));
+    return;
+  }
+
+  if (sub === "reset") {
+    var state = wf.readState(projectDir);
+    if (!state) { console.log("No active workflow to reset."); return; }
+    var name = state.workflow;
+    wf.resetState(projectDir);
+    console.log('Workflow "' + name + '" cleared.');
+    return;
+  }
+
+  console.error("Unknown workflow subcommand: " + sub);
+  console.error("Usage: --workflow [list|start <name>|status|complete <step>|reset]");
+  process.exit(1);
+}
+
 function main() {
   var args = process.argv.slice(2);
   var dryRun = args.indexOf("--dry-run") !== -1;
@@ -1185,10 +1422,13 @@ function main() {
 
   if (args.indexOf("--help") !== -1 || args.indexOf("-h") !== -1) return cmdHelp();
   if (args.indexOf("--version") !== -1 || args.indexOf("-v") !== -1) { console.log("hook-runner v" + VERSION); return; }
+  if (args.indexOf("--workflow") !== -1) return cmdWorkflow(args);
   if (args.indexOf("--upgrade") !== -1) return cmdUpgrade(args, dryRun);
   if (args.indexOf("--uninstall") !== -1) return cmdUninstall(args, dryRun);
   if (args.indexOf("--prune") !== -1) return cmdPrune(args, dryRun);
   if (args.indexOf("--stats") !== -1) return cmdStats();
+  if (args.indexOf("--export") !== -1) return cmdExport(args);
+  if (args.indexOf("--perf") !== -1) return cmdPerf();
   if (args.indexOf("--list") !== -1) return cmdList();
   if (args.indexOf("--test") !== -1) return cmdTest();
   if (args.indexOf("--health") !== -1) return cmdHealth();
