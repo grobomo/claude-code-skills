@@ -46,7 +46,7 @@ var SCRIPT_DIR = __dirname;
 var REPO_DIR = SCRIPT_DIR;
 
 var HOOK_LOG_PATH = path.join(HOOKS_DIR, "hook-log.jsonl");
-var VERSION = "1.5.1";
+var VERSION = "2.2.1";
 
 // ============================================================
 // 0. Hook Log Stats
@@ -349,7 +349,7 @@ function installRunners(dryRun) {
   if (!dryRun) fs.mkdirSync(HOOKS_DIR, { recursive: true });
 
   // Copy runner scripts + load-modules.js
-  var runnerFiles = ["run-pretooluse.js", "run-posttooluse.js", "run-stop.js", "run-sessionstart.js", "run-userpromptsubmit.js", "load-modules.js", "hook-log.js", "run-async.js"];
+  var runnerFiles = ["run-pretooluse.js", "run-posttooluse.js", "run-stop.js", "run-sessionstart.js", "run-userpromptsubmit.js", "load-modules.js", "hook-log.js", "run-async.js", "workflow.js", "workflow-cli.js"];
   for (var i = 0; i < runnerFiles.length; i++) {
     var src = path.join(REPO_DIR, runnerFiles[i]);
     var dest = path.join(HOOKS_DIR, runnerFiles[i]);
@@ -715,6 +715,7 @@ function cmdHelp() {
   console.log("  --install       Skip report, just install runners");
   console.log("  --open          Open report in browser (default: don't open)");
   console.log("  --force         With --uninstall: also remove non-empty module dirs");
+  console.log("  --yes           Non-interactive: auto-confirm install + enable default workflows");
   console.log("");
   console.log("Examples:");
   console.log("  node setup.js                    # first-time setup");
@@ -723,13 +724,33 @@ function cmdHelp() {
   console.log("  node setup.js --uninstall --dry-run  # preview removal");
 }
 
+/**
+ * Extract changelog sections between two versions.
+ * Returns text of all ## [x.y.z] sections where x.y.z is newer than localVer.
+ */
+function extractChangelogBetween(changelog, localVer, remoteVer) {
+  var lines = changelog.split("\n");
+  var collecting = false;
+  var result = [];
+  for (var i = 0; i < lines.length; i++) {
+    var heading = lines[i].match(/^## \[([^\]]+)\]/);
+    if (heading) {
+      var ver = heading[1];
+      if (ver === localVer) break; // stop at current version
+      collecting = true;
+    }
+    if (collecting) result.push(lines[i]);
+  }
+  return result.length > 0 ? result.join("\n").trim() : null;
+}
+
 function cmdUpgrade(args, dryRun) {
   console.log("[hook-runner] Upgrade");
   console.log("========================");
   var source = "grobomo/hook-runner";
   var branch = "main";
   var coreFiles = [
-    "setup.js", "report.js",
+    "setup.js", "report.js", "workflow.js", "workflow-cli.js",
     "run-pretooluse.js", "run-posttooluse.js", "run-stop.js",
     "run-sessionstart.js", "run-userpromptsubmit.js",
     "load-modules.js", "hook-log.js", "run-async.js"
@@ -747,6 +768,16 @@ function cmdUpgrade(args, dryRun) {
   if (remoteVersion === VERSION && !args.includes("--force")) {
     console.log("  Already up to date. Use --force to re-download anyway.");
     return;
+  }
+  // Show what changed between versions
+  var changelog = fetchFromGitHub(source, branch, "CHANGELOG.md");
+  if (changelog) {
+    var sections = extractChangelogBetween(changelog, VERSION, remoteVersion);
+    if (sections) {
+      console.log("  What's new:");
+      console.log("  " + sections.replace(/\n/g, "\n  "));
+      console.log("");
+    }
   }
   var updated = 0, skipped = 0;
   for (var ui = 0; ui < coreFiles.length; ui++) {
@@ -854,10 +885,31 @@ function cmdUninstall(args, dryRun) {
       uninstallChanges.push({ what: path.basename(lfp), status: dryRun ? "would remove" : "removed" });
     }
   }
+  // WHY: Restoring the original settings.json from backup gives a true "undo".
+  // Without this, uninstall leaves a modified settings.json that may confuse users.
+  var confirmMode = args.indexOf("--confirm") !== -1;
+  var archiveDir = path.join(HOOKS_DIR, "archive");
+  if (confirmMode && fs.existsSync(archiveDir)) {
+    // Find most recent backup with settings.json
+    var backups = fs.readdirSync(archiveDir).filter(function(d) {
+      return d.startsWith("backup-") && fs.existsSync(path.join(archiveDir, d, "settings.json"));
+    }).sort().reverse();
+    if (backups.length > 0) {
+      var latestBackup = path.join(archiveDir, backups[0], "settings.json");
+      if (!dryRun) {
+        fs.copyFileSync(latestBackup, SETTINGS_PATH);
+      }
+      uninstallChanges.push({ what: "settings.json", status: (dryRun ? "would restore from " : "restored from ") + backups[0] });
+    }
+  }
+
   for (var uc = 0; uc < uninstallChanges.length; uc++) {
     console.log("  " + uninstallChanges[uc].what + ": " + uninstallChanges[uc].status);
   }
   console.log("");
+  if (!confirmMode && !dryRun) {
+    console.log("  Tip: use --uninstall --confirm to also restore original settings.json from backup.");
+  }
   console.log("[hook-runner] " + (dryRun ? "Dry-run complete. No changes made." : "Uninstall complete."));
 }
 
@@ -982,7 +1034,7 @@ function cmdList() {
     try {
       var liveEvtDir = path.join(liveDir, events[pe]);
       var liveEntries = fs.readdirSync(liveEvtDir, { withFileTypes: true });
-      var projDirs = liveEntries.filter(function(e) { return e.isDirectory(); });
+      var projDirs = liveEntries.filter(function(e) { return e.isDirectory() && e.name !== "archive"; });
       for (var pd = 0; pd < projDirs.length; pd++) {
         var projPath = path.join(liveEvtDir, projDirs[pd].name);
         var projMods = fs.readdirSync(projPath).filter(function(f) { return f.endsWith(".js"); });
@@ -1104,7 +1156,7 @@ function cmdSync(dryRun) {
   }
 }
 
-function cmdWizard(reportOnly, dryRun, openMode) {
+function cmdWizard(reportOnly, dryRun, openMode, autoYes) {
   console.log("[hook-runner] Setup Wizard");
   console.log("========================");
 
@@ -1144,6 +1196,9 @@ function cmdWizard(reportOnly, dryRun, openMode) {
     for (var d = 0; d < dryChanges.length; d++) {
       console.log("  " + dryChanges[d].action + ": " + dryChanges[d].file);
     }
+    if (autoYes) {
+      console.log("  [--yes] Would enable default workflows: shtd, messaging-safety");
+    }
     console.log("\n[hook-runner] Dry-run complete. No changes made.");
     return;
   }
@@ -1170,6 +1225,35 @@ function cmdWizard(reportOnly, dryRun, openMode) {
   console.log("  Report: " + afterReport);
   if (openMode) openFile(afterReport);
 
+  // Step 7: Enable default workflows (if --yes or interactive)
+  // WHY: New users don't know which workflows to enable. Defaults provide
+  // immediate value (spec-first, test-first, no accidental messaging).
+  var enableWorkflows = autoYes;
+  if (enableWorkflows) {
+    console.log("[6/6] Enabling default workflows...");
+    var wf = require("./workflow");
+    var globalDir = path.join(os.homedir(), ".claude", "hooks");
+    var defaultWorkflows = ["shtd", "messaging-safety"];
+    for (var wi = 0; wi < defaultWorkflows.length; wi++) {
+      var wfName = defaultWorkflows[wi];
+      try {
+        var workflows = wf.findWorkflows(process.cwd());
+        var found = false;
+        for (var wj = 0; wj < workflows.length; wj++) {
+          if (workflows[wj].name === wfName) { found = true; break; }
+        }
+        if (found) {
+          wf.enableWorkflow(wfName, globalDir);
+          console.log("  Enabled workflow: " + wfName);
+        } else {
+          console.log("  Workflow not found (skip): " + wfName);
+        }
+      } catch (e) {
+        console.log("  Could not enable " + wfName + ": " + (e.message || "").slice(0, 80));
+      }
+    }
+  }
+
   // Summary
   console.log("");
   console.log("============================================");
@@ -1179,13 +1263,20 @@ function cmdWizard(reportOnly, dryRun, openMode) {
   console.log("  Module dirs: ~/.claude/hooks/run-modules/{Event}/");
   console.log("  Backup: " + backup.backupDir);
   console.log("  Report: " + afterReport);
+  if (enableWorkflows) {
+    console.log("  Default workflows enabled: shtd, messaging-safety");
+  }
   console.log("");
   console.log("  To add a hook module:");
   console.log("    Create ~/.claude/hooks/run-modules/<Event>/my-module.js");
   console.log("    Export: module.exports = function(input) { return null; }");
   console.log("");
+  console.log("  To manage workflows:");
+  console.log("    node setup.js --workflow list      # see available workflows");
+  console.log("    node setup.js --workflow enable X   # enable a workflow");
+  console.log("");
   console.log("  To restore original hooks:");
-  console.log("    cp " + backup.backupDir + "/settings.json ~/.claude/settings.json");
+  console.log("    node setup.js --uninstall --confirm");
   console.log("============================================");
 }
 
@@ -1339,88 +1430,7 @@ function cmdExport(args) {
 }
 
 function cmdWorkflow(args) {
-  var wf;
-  try { wf = require(path.join(__dirname, "workflow.js")); } catch(e) {
-    console.error("[workflow] workflow.js not found in hook-runner directory.");
-    process.exit(1);
-  }
-  var sub = null;
-  for (var i = 0; i < args.length; i++) {
-    if (args[i] === "--workflow") { sub = args[i + 1] || null; break; }
-  }
-  var projectDir = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-
-  if (!sub || sub === "list") {
-    var workflows = wf.findWorkflows(projectDir);
-    if (workflows.length === 0) { console.log("No workflows found."); return; }
-    for (var wi = 0; wi < workflows.length; wi++) {
-      var w = workflows[wi];
-      console.log(w.name + " (" + w.steps.length + " steps) — " + (w.description || ""));
-      for (var si = 0; si < w.steps.length; si++) {
-        console.log("  " + w.steps[si].id + ": " + w.steps[si].name);
-      }
-    }
-    return;
-  }
-
-  if (sub === "start") {
-    var wfName = args[args.indexOf("start") + 1];
-    if (!wfName) { console.error("Usage: --workflow start <name>"); process.exit(1); }
-    var existing = wf.readState(projectDir);
-    if (existing) { console.error('Workflow "' + existing.workflow + '" already active. Reset first.'); process.exit(1); }
-    var workflows = wf.findWorkflows(projectDir);
-    var target = null;
-    for (var fi = 0; fi < workflows.length; fi++) {
-      if (workflows[fi].name === wfName) { target = workflows[fi]; break; }
-    }
-    if (!target) { console.error("Workflow not found: " + wfName); process.exit(1); }
-    wf.initState(wfName, target._path, projectDir);
-    var current = wf.currentStep(projectDir);
-    console.log('Started workflow "' + wfName + '". Current step: ' + current);
-    return;
-  }
-
-  if (sub === "status") {
-    var state = wf.readState(projectDir);
-    if (!state) { console.log("No active workflow."); return; }
-    console.log("Workflow: " + state.workflow);
-    console.log("Started:  " + state.started_at);
-    console.log("");
-    var def = wf.loadWorkflow(state.workflow_path);
-    var current = wf.currentStep(projectDir);
-    for (var di = 0; di < def.steps.length; di++) {
-      var step = def.steps[di];
-      var s = state.steps[step.id] || {};
-      var marker = "  ";
-      if (s.status === "completed") marker = "OK";
-      else if (step.id === current) marker = ">>";
-      var status = s.status || "pending";
-      console.log(marker + " " + step.id.padEnd(20) + status.padEnd(14) + step.name);
-    }
-    return;
-  }
-
-  if (sub === "complete") {
-    var stepId = args[args.indexOf("complete") + 1];
-    if (!stepId) { console.error("Usage: --workflow complete <step-id>"); process.exit(1); }
-    wf.completeStep(stepId, projectDir);
-    var next = wf.currentStep(projectDir);
-    console.log('Completed step "' + stepId + '".' + (next ? " Next: " + next : " Workflow complete!"));
-    return;
-  }
-
-  if (sub === "reset") {
-    var resetState = wf.readState(projectDir);
-    if (!resetState) { console.log("No active workflow to reset."); return; }
-    var name = resetState.workflow;
-    wf.resetState(projectDir);
-    console.log('Workflow "' + name + '" cleared.');
-    return;
-  }
-
-  console.error("Unknown workflow subcommand: " + sub);
-  console.error("Usage: --workflow [list|start <name>|status|complete <step>|reset]");
-  process.exit(1);
+  return require(path.join(__dirname, "workflow-cli.js"))(args);
 }
 
 function main() {
@@ -1444,7 +1454,8 @@ function main() {
 
   // Default: setup wizard (with --report and --install as sub-modes)
   var reportOnly = args.indexOf("--report") !== -1;
-  cmdWizard(reportOnly, dryRun, openMode);
+  var autoYes = args.indexOf("--yes") !== -1 || args.indexOf("-y") !== -1;
+  cmdWizard(reportOnly, dryRun, openMode, autoYes);
 }
 
 // ============================================================
@@ -1482,6 +1493,8 @@ function healthCheck() {
       var stat;
       try { stat = fs.statSync(fPath); } catch(e) { continue; }
       if (stat.isDirectory()) {
+        // skip archive directories — contain superseded modules with stale deps
+        if (f === "archive") continue;
         // project-scoped: check each file inside
         var subFiles;
         try { subFiles = fs.readdirSync(fPath); } catch(e) { continue; }
@@ -1553,12 +1566,60 @@ function healthCheck() {
     results.push({ check: "settings", file: "settings.json", status: "missing" });
   }
 
-  // 5. Check hook log writability
+  // 5. Portable paths — flag modules with hardcoded absolute user paths
+  var pathPatterns = [/C:\\Users\\/i, /\/home\/\w+/, /\/Users\/\w+/];
+  // Modules that detect paths as their purpose — not false positives
+  var pathCheckExclude = ["no-hardcoded-paths.js", "cwd-drift-detector.js", "portable-paths.js"];
+  for (var pi = 0; pi < events.length; pi++) {
+    var pEvt = events[pi];
+    var pModDir = path.join(HOOKS_DIR, "run-modules", pEvt);
+    if (!fs.existsSync(pModDir)) continue;
+    var pFiles;
+    try { pFiles = fs.readdirSync(pModDir).filter(function(f) { return f.endsWith(".js"); }); } catch(e) { continue; }
+    for (var pfi = 0; pfi < pFiles.length; pfi++) {
+      if (pathCheckExclude.indexOf(pFiles[pfi]) >= 0) continue;
+      var pPath = path.join(pModDir, pFiles[pfi]);
+      var pContent;
+      try { pContent = fs.readFileSync(pPath, "utf-8"); } catch(e) { continue; }
+      for (var ppi = 0; ppi < pathPatterns.length; ppi++) {
+        if (pathPatterns[ppi].test(pContent)) {
+          results.push({ check: "portable-path", file: pEvt + "/" + pFiles[pfi], status: "warning", detail: "contains hardcoded absolute path" });
+          break;
+        }
+      }
+    }
+  }
+
+  // 6. Check hook log writability
   try {
     fs.accessSync(path.dirname(HOOK_LOG_PATH), fs.constants.W_OK);
     results.push({ check: "log", file: "hook-log.jsonl", status: "ok", detail: fs.existsSync(HOOK_LOG_PATH) ? "exists" : "will be created on first trigger" });
   } catch(e) {
     results.push({ check: "log", file: "hook-log.jsonl", status: "error", detail: "hooks dir not writable" });
+  }
+
+  // 7. Detect duplicate/redundant modules (e.g. shtd_branch-gate vs branch-pr-gate)
+  for (var ddi = 0; ddi < events.length; ddi++) {
+    var ddEvt = events[ddi];
+    var ddDir = path.join(HOOKS_DIR, "run-modules", ddEvt);
+    if (!fs.existsSync(ddDir)) continue;
+    var ddFiles;
+    try { ddFiles = fs.readdirSync(ddDir).filter(function(f) { return f.endsWith(".js"); }).sort(); } catch(e) { continue; }
+    // Build map of base names (strip shtd_ prefix, normalize hyphens)
+    var baseNameMap = {};
+    for (var ddf = 0; ddf < ddFiles.length; ddf++) {
+      var name = ddFiles[ddf].replace(/\.js$/, "");
+      // Normalize: strip shtd_ prefix, replace _ with -, remove -gate suffix variance
+      var base = name.replace(/^shtd_/, "").replace(/_/g, "-");
+      if (!baseNameMap[base]) baseNameMap[base] = [];
+      baseNameMap[base].push(name);
+    }
+    var bk = Object.keys(baseNameMap);
+    for (var bki = 0; bki < bk.length; bki++) {
+      if (baseNameMap[bk[bki]].length > 1) {
+        results.push({ check: "duplicate", file: ddEvt + "/" + baseNameMap[bk[bki]].join(", "), status: "warning", detail: "possible duplicates — similar base name '" + bk[bki] + "'" });
+      }
+    }
   }
 
   return results;

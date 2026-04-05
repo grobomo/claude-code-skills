@@ -124,6 +124,12 @@ function parseScalar(val) {
 function loadWorkflow(yamlPath) {
   const text = fs.readFileSync(yamlPath, 'utf-8');
   const parsed = parseYaml(text);
+  // Parse modules list (array of module base names)
+  var modules = [];
+  if (Array.isArray(parsed.modules)) {
+    modules = parsed.modules.filter(m => typeof m === 'string');
+  }
+
   return {
     name: parsed.name || path.basename(yamlPath, '.yml'),
     description: parsed.description || '',
@@ -134,6 +140,7 @@ function loadWorkflow(yamlPath) {
       gate: s.gate || {},
       completion: s.completion || {},
     })),
+    modules: modules,
     _path: yamlPath,
   };
 }
@@ -279,6 +286,47 @@ function checkEditAllowed(filePath, projectDir) {
   return checkGate(current, projectDir);
 }
 
+// --- Workflow Config (enable/disable) ---
+// Stored in <dir>/workflow-config.json (global: ~/.claude/hooks/, per-project: $CLAUDE_PROJECT_DIR)
+
+const CONFIG_FILE = 'workflow-config.json';
+
+function configPath(dir) {
+  return path.join(dir, CONFIG_FILE);
+}
+
+function readConfig(dir) {
+  const p = configPath(dir);
+  if (!fs.existsSync(p)) return {};
+  try { return JSON.parse(fs.readFileSync(p, 'utf-8')); } catch(e) { return {}; }
+}
+
+function writeConfig(config, dir) {
+  fs.writeFileSync(configPath(dir), JSON.stringify(config, null, 2) + '\n');
+}
+
+function enableWorkflow(name, dir) {
+  const config = readConfig(dir);
+  config[name] = true;
+  writeConfig(config, dir);
+}
+
+function disableWorkflow(name, dir) {
+  const config = readConfig(dir);
+  config[name] = false;
+  writeConfig(config, dir);
+}
+
+function isWorkflowEnabled(name, dir) {
+  const config = readConfig(dir);
+  return config[name] === true;
+}
+
+function enabledWorkflows(dir) {
+  const config = readConfig(dir);
+  return Object.keys(config).filter(k => config[k] === true);
+}
+
 module.exports = {
   parseYaml,
   loadWorkflow,
@@ -291,5 +339,12 @@ module.exports = {
   currentStep,
   checkGate,
   checkEditAllowed,
+  readConfig,
+  writeConfig,
+  enableWorkflow,
+  disableWorkflow,
+  isWorkflowEnabled,
+  enabledWorkflows,
   STATE_FILE,
+  CONFIG_FILE,
 };
