@@ -2,6 +2,29 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.6.1] — 2026-04-05
+
+### Fixed
+- **Project dir decoding** — `--integrity` CLI now correctly resolves hyphenated names (`hook-runner`), dot-prefix dirs (`.claude`), and nested paths using greedy filesystem-aware decode (#180)
+
+### Added
+- **Decode tests** — `--integrity --json` validation and `decodeProjectDir` path resolution tests (#181)
+
+## [2.6.0] — 2026-04-05
+
+### Added
+- **Hook integrity monitor** — 3 new modules that enforce hook system integrity across all Claude sessions (#176)
+  - `workflow-compliance-gate` (PreToolUse): blocks if globally enforced workflow disabled at project level. Caught ddei session running ad-hoc without SHTD.
+  - `hook-integrity-check` (SessionStart): verifies live modules match repo checksums, auto-repairs drift, reports workflow compliance status
+  - `hook-integrity-monitor` (UserPromptSubmit, async): spot-checks random sample of modules each prompt, rate-limited 60s, full repair on drift
+- **Repo marker file** — `sync-live` writes `.hook-runner-repo` to hooks dir so integrity modules can find source of truth
+- **Exception whitelist** — manual `workflow-exceptions.json` for projects that legitimately need different workflow config
+- **Test suite** — 18 tests for integrity monitor components (#176)
+
+### Fixed
+- Spec-gate test: added missing `spec.md` + initial git commit to temp repo (#173)
+- README module docs: added 3 ep-incident-response modules to table (#173)
+
 ## [2.5.10] — 2026-04-05
 
 ### Added

@@ -339,11 +339,15 @@ Full catalog in `modules/` directory:
 | `test-checkpoint-gate` | Blocks code without e2e test (auto-detects `scripts/test/test-TXXX*.sh`) |
 | `why-reminder` | Reminds to explain WHY before every code edit |
 | `worker-loop` | Blocks PR creation until task's e2e test passes |
+| `workflow-compliance-gate` | Blocks if globally enforced workflow disabled at project level |
 | `workflow-gate` | Enforces step order in active workflows |
 
 #### Project-Scoped PreToolUse
 | Module | Project | Description |
 |--------|---------|-------------|
+| `no-customer-env-changes` | ep-incident-response | Blocks infrastructure changes during incident response |
+| `no-data-exfil` | ep-incident-response | Blocks data export/download during incident response |
+| `v1-read-only` | ep-incident-response | Blocks Vision One write operations during incident response |
 | `share-is-generic` | ddei-email-security | Domain-specific gate for email security project |
 | `use-workers` | hackathon26 | Forces delegation to fleet workers |
 
@@ -363,6 +367,7 @@ Full catalog in `modules/` directory:
 |--------|-------------|
 | `instruction-detector` | Detects "always/never" directives for enforcement |
 | `interrupt-detector` | Detects user interrupts, triggers self-analysis |
+| `hook-integrity-monitor` | Spot-checks live module integrity each prompt (async, rate-limited) |
 | `prompt-logger` | Logs prompts to JSONL for audit |
 
 ### Stop (controls session ending)
@@ -387,6 +392,7 @@ Full catalog in `modules/` directory:
 |--------|-------------|
 | `backup-check` | Warns if config backup is stale |
 | `config-sync` | Auto-syncs ~/.claude config to git remote |
+| `hook-integrity-check` | Verifies live modules match repo, auto-repairs drift, checks workflow compliance |
 | `load-instructions` | Injects working instructions at session start |
 | `load-lessons` | Injects recent self-analysis lessons |
 | `project-health` | Runs health check, warns about issues |

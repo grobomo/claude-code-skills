@@ -46,7 +46,7 @@ var SCRIPT_DIR = __dirname;
 var REPO_DIR = SCRIPT_DIR;
 
 var HOOK_LOG_PATH = path.join(HOOKS_DIR, "hook-log.jsonl");
-var VERSION = "2.5.10";
+var VERSION = require(path.join(__dirname, "package.json")).version;
 
 // Shared file lists — single source of truth (see constants.js)
 var RUNNER_FILES = require(path.join(__dirname, "constants.js")).RUNNER_FILES;
@@ -711,6 +711,7 @@ function cmdHelp() {
   console.log("  --uninstall     Remove hook-runner from settings.json and hooks dir");
   console.log("  --prune [N]     Prune log entries older than N days (default 7)");
   console.log("  --version, -v   Show version");
+  console.log("  --integrity     Full integrity scan (file drift + workflow compliance)");
   console.log("  --help, -h      Show this help");
   console.log("");
   console.log("Options:");
@@ -764,7 +765,7 @@ function cmdUpgrade(args, dryRun) {
   console.log("  Local version:  " + VERSION);
   console.log("  Remote version: " + remoteVersion);
   console.log("");
-  if (remoteVersion === VERSION && !args.includes("--force")) {
+  if (remoteVersion === VERSION && args.indexOf("--force") === -1) {
     console.log("  Already up to date. Use --force to re-download anyway.");
     return;
   }
@@ -1580,6 +1581,7 @@ function main() {
   if (args.indexOf("--list") !== -1) return cmdList();
   if (args.indexOf("--test-module") !== -1) return cmdTestModule(args);
   if (args.indexOf("--test") !== -1) return cmdTest();
+  if (args.indexOf("--integrity") !== -1) return cmdIntegrity(args);
   if (args.indexOf("--health") !== -1) return cmdHealth();
   if (args.indexOf("--sync") !== -1) return cmdSync(dryRun);
 
@@ -1587,6 +1589,230 @@ function main() {
   var reportOnly = args.indexOf("--report") !== -1;
   var autoYes = args.indexOf("--yes") !== -1 || args.indexOf("-y") !== -1;
   cmdWizard(reportOnly, dryRun, openMode, autoYes);
+}
+
+// ============================================================
+// Integrity Check
+// ============================================================
+
+// Decode .claude/projects/ encoded dir name back to a filesystem path.
+// Encoding replaces \ / : . with - (lossy). Greedy: try joining segments
+// left-to-right, checking which combinations exist on disk.
+// e.g. "X--home-dev-projects-my-app" → "X:\home\dev\projects\my-app"
+// e.g. "X--home-dev--config" → "X:\home\dev\.config" (-- mid-string = dot-prefix)
+function decodeProjectDir(encoded) {
+  // Drive letter: first segment before first -- is the drive letter
+  var driveIdx = encoded.indexOf("--");
+  if (driveIdx < 1) return null;
+  var drive = encoded.substring(0, driveIdx) + ":";
+  var rest = encoded.substring(driveIdx + 2); // skip the --
+  if (!rest) return drive + path.sep;
+
+  var segments = rest.split("-");
+  // Greedy: accumulate segments, emit a path component when the path exists
+  var current = drive + path.sep;
+  var accum = segments[0];
+
+  for (var i = 1; i < segments.length; i++) {
+    // Empty segment means original had -- (dot-prefix like .claude)
+    if (segments[i] === "") {
+      // Emit current accum as path component, next segment gets dot prefix
+      if (accum) {
+        current = path.join(current, accum);
+      }
+      // Consume the next non-empty segment with a dot prefix
+      if (i + 1 < segments.length) {
+        i++;
+        accum = "." + segments[i];
+      } else {
+        accum = "";
+      }
+      continue;
+    }
+
+    // Try treating this - as a path separator
+    var asDir = path.join(current, accum);
+    if (fs.existsSync(asDir)) {
+      // Also check if joining more segments would match a longer name
+      var joined = accum + "-" + segments[i];
+      var asJoined = path.join(current, joined);
+      if (fs.existsSync(asJoined)) {
+        // Prefer the longer match (e.g. "hook-runner" over "hook")
+        accum = joined;
+        continue;
+      }
+      // The dir exists and extending doesn't — emit this component
+      current = asDir;
+      accum = segments[i];
+    } else {
+      // Doesn't exist as dir — this - must be part of the name (hyphen or dot)
+      accum = accum + "-" + segments[i];
+    }
+  }
+
+  // Final component
+  return path.join(current, accum);
+}
+
+function cmdIntegrity(args) {
+  var crypto = require("crypto");
+  var jsonMode = args.indexOf("--json") !== -1;
+  var repoModDir = path.join(REPO_DIR, "modules");
+  var liveModDir = path.join(HOOKS_DIR, "run-modules");
+  var markerPath = path.join(HOOKS_DIR, ".hook-runner-repo");
+  var events = ["PreToolUse", "PostToolUse", "SessionStart", "Stop", "UserPromptSubmit"];
+
+  function md5(filePath) {
+    try { return crypto.createHash("md5").update(fs.readFileSync(filePath)).digest("hex"); }
+    catch (e) { return null; }
+  }
+
+  var results = { files: { checked: 0, drifted: [], orphans: [], repaired: [] }, workflows: { enforced: [], violations: [] }, marker: null };
+
+  // 1. Marker file
+  if (fs.existsSync(markerPath)) {
+    results.marker = fs.readFileSync(markerPath, "utf-8").trim();
+  }
+  if (!jsonMode) {
+    console.log("[hook-runner] Integrity Check");
+    console.log("========================");
+    console.log("");
+    console.log("Repo: " + REPO_DIR);
+    console.log("Live: " + HOOKS_DIR);
+    console.log("Marker: " + (results.marker || "(missing)"));
+    console.log("");
+  }
+
+  // 2. File integrity
+  for (var ei = 0; ei < events.length; ei++) {
+    var repoEventDir = path.join(repoModDir, events[ei]);
+    var liveEventDir = path.join(liveModDir, events[ei]);
+    if (!fs.existsSync(repoEventDir)) continue;
+    var entries;
+    try { entries = fs.readdirSync(repoEventDir, { withFileTypes: true }); } catch (e) { continue; }
+
+    for (var fi = 0; fi < entries.length; fi++) {
+      var ent = entries[fi];
+      if (ent.isFile() && ent.name.indexOf(".js") === ent.name.length - 3) {
+        results.files.checked++;
+        var rh = md5(path.join(repoEventDir, ent.name));
+        var lh = md5(path.join(liveEventDir, ent.name));
+        var label = events[ei] + "/" + ent.name;
+        if (!lh) {
+          results.files.drifted.push({ file: label, status: "missing" });
+        } else if (rh !== lh) {
+          results.files.drifted.push({ file: label, status: "content-drift" });
+        }
+      } else if (ent.isDirectory() && ent.name !== "archive" && ent.name.charAt(0) !== "_") {
+        var subFiles;
+        try { subFiles = fs.readdirSync(path.join(repoEventDir, ent.name)); } catch (e) { continue; }
+        for (var si = 0; si < subFiles.length; si++) {
+          if (subFiles[si].indexOf(".js") !== subFiles[si].length - 3) continue;
+          results.files.checked++;
+          var srh = md5(path.join(repoEventDir, ent.name, subFiles[si]));
+          var slh = md5(path.join(liveEventDir, ent.name, subFiles[si]));
+          var slabel = events[ei] + "/" + ent.name + "/" + subFiles[si];
+          if (!slh) {
+            results.files.drifted.push({ file: slabel, status: "missing" });
+          } else if (srh !== slh) {
+            results.files.drifted.push({ file: slabel, status: "content-drift" });
+          }
+        }
+      }
+    }
+
+    // Detect orphans in live
+    if (fs.existsSync(liveEventDir)) {
+      var liveFiles;
+      try { liveFiles = fs.readdirSync(liveEventDir); } catch (e) { liveFiles = []; }
+      for (var li = 0; li < liveFiles.length; li++) {
+        if (liveFiles[li].indexOf(".js") !== liveFiles[li].length - 3) continue;
+        try { if (fs.statSync(path.join(liveEventDir, liveFiles[li])).isDirectory()) continue; } catch (e) { continue; }
+        if (!fs.existsSync(path.join(repoEventDir, liveFiles[li]))) {
+          results.files.orphans.push(events[ei] + "/" + liveFiles[li]);
+        }
+      }
+    }
+  }
+
+  // Check runner files
+  for (var ri = 0; ri < RUNNER_FILES.length; ri++) {
+    results.files.checked++;
+    var rrh = md5(path.join(REPO_DIR, RUNNER_FILES[ri]));
+    var rlh = md5(path.join(HOOKS_DIR, RUNNER_FILES[ri]));
+    if (rrh && rlh && rrh !== rlh) {
+      results.files.drifted.push({ file: "runner:" + RUNNER_FILES[ri], status: "content-drift" });
+    }
+  }
+
+  // 3. Workflow compliance
+  try {
+    var wf = require(path.join(REPO_DIR, "workflow.js"));
+    var globalConfig = wf.readConfig(HOOKS_DIR);
+    results.workflows.enforced = Object.keys(globalConfig).filter(function(k) { return globalConfig[k] === true; });
+
+    // Check all known project dirs
+    // Encoding in .claude/projects/ replaces \ / : . with - (lossy).
+    // Greedy decode: split segments, join checking filesystem existence.
+    var projectsDir = path.join(process.env.HOME || process.env.USERPROFILE || "", ".claude", "projects");
+    if (fs.existsSync(projectsDir)) {
+      var projDirs = fs.readdirSync(projectsDir);
+      for (var pi = 0; pi < projDirs.length; pi++) {
+        var decoded = decodeProjectDir(projDirs[pi]);
+        if (!decoded || !fs.existsSync(decoded)) continue;
+        var projConfigPath = path.join(decoded, "workflow-config.json");
+        if (!fs.existsSync(projConfigPath)) continue;
+        var projConfig;
+        try { projConfig = JSON.parse(fs.readFileSync(projConfigPath, "utf-8")); } catch (e) { continue; }
+        for (var wi = 0; wi < results.workflows.enforced.length; wi++) {
+          var wfName = results.workflows.enforced[wi];
+          if (projConfig[wfName] === false) {
+            results.workflows.violations.push({ project: decoded, workflow: wfName });
+          }
+        }
+      }
+    }
+  } catch (e) { /* workflow.js not available */ }
+
+  // 4. Output
+  if (jsonMode) {
+    console.log(JSON.stringify(results, null, 2));
+    return;
+  }
+
+  // File integrity
+  console.log("File Integrity:");
+  if (results.files.drifted.length === 0) {
+    console.log("  [  OK] " + results.files.checked + " files verified, all match repo");
+  } else {
+    for (var di = 0; di < results.files.drifted.length; di++) {
+      var d = results.files.drifted[di];
+      console.log("  [DRIFT] " + d.file + " (" + d.status + ")");
+    }
+    console.log("  " + results.files.drifted.length + " of " + results.files.checked + " files drifted");
+    console.log("  FIX: node setup.js --workflow sync-live");
+  }
+  if (results.files.orphans.length > 0) {
+    console.log("");
+    console.log("Orphans (in live, not in repo):");
+    for (var oi = 0; oi < results.files.orphans.length; oi++) {
+      console.log("  [WARN] " + results.files.orphans[oi]);
+    }
+  }
+
+  // Workflow compliance
+  console.log("");
+  console.log("Workflow Compliance:");
+  console.log("  Globally enforced: " + (results.workflows.enforced.length > 0 ? results.workflows.enforced.join(", ") : "(none)"));
+  if (results.workflows.violations.length === 0) {
+    console.log("  [  OK] No project-level overrides detected");
+  } else {
+    for (var vi = 0; vi < results.workflows.violations.length; vi++) {
+      var v = results.workflows.violations[vi];
+      console.log("  [BLOCK] " + v.project + " disables " + v.workflow);
+    }
+  }
+  console.log("");
 }
 
 // ============================================================
@@ -1756,6 +1982,6 @@ function healthCheck() {
   return results;
 }
 
-module.exports = { scanHooks: scanHooks, generateReport: generateReport, backupHooks: backupHooks, installRunners: installRunners, parseModulesYaml: parseModulesYaml, syncModules: syncModules, readHookStats: readHookStats, healthCheck: healthCheck, pruneLog: pruneLog, VERSION: VERSION };
+module.exports = { scanHooks: scanHooks, generateReport: generateReport, backupHooks: backupHooks, installRunners: installRunners, parseModulesYaml: parseModulesYaml, syncModules: syncModules, readHookStats: readHookStats, healthCheck: healthCheck, pruneLog: pruneLog, VERSION: VERSION, _decodeProjectDir: decodeProjectDir };
 
 if (require.main === module) main();
