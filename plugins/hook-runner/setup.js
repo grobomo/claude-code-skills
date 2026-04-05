@@ -46,7 +46,7 @@ var SCRIPT_DIR = __dirname;
 var REPO_DIR = SCRIPT_DIR;
 
 var HOOK_LOG_PATH = path.join(HOOKS_DIR, "hook-log.jsonl");
-var VERSION = "2.5.3";
+var VERSION = "2.5.4";
 
 // Shared file lists — single source of truth (see constants.js)
 var RUNNER_FILES = require(path.join(__dirname, "constants.js")).RUNNER_FILES;
@@ -1596,8 +1596,8 @@ function healthCheck() {
   var results = [];
   var events = ["PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"];
 
-  // 1. Check runners exist
-  var runners = ["run-pretooluse.js", "run-posttooluse.js", "run-stop.js", "run-sessionstart.js", "run-userpromptsubmit.js", "load-modules.js", "hook-log.js"];
+  // 1. Check runners exist (uses shared constant)
+  var runners = RUNNER_FILES;
   for (var ri = 0; ri < runners.length; ri++) {
     var rPath = path.join(HOOKS_DIR, runners[ri]);
     if (fs.existsSync(rPath)) {
