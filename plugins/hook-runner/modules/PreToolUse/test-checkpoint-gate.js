@@ -20,12 +20,15 @@ module.exports = function(input) {
   var norm = targetFile.replace(/\\/g, "/");
 
   // Allow bootstrap/config/spec/test files
+  // T080: Tightened — removed .json catch-all, kept scripts/test/ (this IS the test gate)
   var allowPatterns = [
     /TODO\.md$/, /SESSION_STATE\.md$/, /CLAUDE\.md$/,
     /\.claude\//, /\/specs\//, /\.planning\//, /\.specify\//,
     /\.github\//, /\/hooks\//, /\/rules\//,
-    /\.gitignore$/, /\.json$/,
-    /scripts\/test\//,
+    /\.gitignore$/,
+    /package\.json$/, /package-lock\.json$/, /tsconfig[^/]*\.json$/,
+    /\.eslintrc/, /\.prettierrc/, /jest\.config/, /vitest\.config/,
+    /scripts\/test\//, // test files still allowed here (this IS the test gate)
   ];
   for (var i = 0; i < allowPatterns.length; i++) {
     if (allowPatterns[i].test(norm)) return null;
@@ -33,7 +36,7 @@ module.exports = function(input) {
 
   // Allow user home config
   var home = (process.env.HOME || process.env.USERPROFILE || "").replace(/\\/g, "/");
-  if (home && norm.startsWith(home + "/.claude/")) return null;
+  if (home && norm.indexOf(home + "/.claude/") === 0) return null;
 
   // Find project roots
   var projectDir = (process.env.CLAUDE_PROJECT_DIR || "").replace(/\\/g, "/");

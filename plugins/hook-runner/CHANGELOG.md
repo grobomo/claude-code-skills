@@ -2,6 +2,37 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.5.10] — 2026-04-05
+
+### Added
+- **customer-data-guard workflow** — read-only incident response with 3 project-scoped modules (no-customer-env-changes, no-data-exfil, v1-read-only) (#170)
+
+### Fixed
+- **Workflow audit** now scans project-scoped subdirectories, not just top-level modules (#170)
+- **Catalog sync** — spec-gate (branch-aware matching, auto-SHTD activation) and test-checkpoint-gate (tighter allowlist) synced from live (#170)
+
+## [2.5.9] — 2026-04-05
+
+### Added
+- **Report: Workflow summary** — clickable cards showing each workflow and its modules, with block counts (#168)
+- **Report: Workflow filter** — toolbar buttons to filter all modules by workflow name (#168)
+- **Report: Workflow badge** — colored badge on each module card showing its workflow (#168)
+- **Report: WHY text** — incident description shown prominently below module name, no longer buried in source (#168)
+
+## [2.5.8] — 2026-04-05
+
+### Fixed
+- Replace `.startsWith()` and `.endsWith()` ES6 methods with `indexOf()` in 9 module files for ES5 consistency (#166)
+
+## [2.5.7] — 2026-04-05
+
+### Performance
+- `preserve-iterated-content` module: use `git rev-list --count` instead of `git log --oneline` (faster, no output parsing), reduce timeout from 3s to 1.5s
+
+### Fixed
+- `preserve-iterated-content`: replace `.some()` ES6 method with for-loop for ES5 consistency
+- `rule-hygiene`: replace `.includes()` ES6 method with `indexOf()` for ES5 consistency
+
 ## [2.5.6] — 2026-04-05
 
 ### Added
