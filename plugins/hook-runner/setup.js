@@ -46,15 +46,10 @@ var SCRIPT_DIR = __dirname;
 var REPO_DIR = SCRIPT_DIR;
 
 var HOOK_LOG_PATH = path.join(HOOKS_DIR, "hook-log.jsonl");
-var VERSION = "2.5.2";
+var VERSION = "2.5.3";
 
-// Shared file lists — single source of truth for install/upgrade/uninstall
-var RUNNER_FILES = [
-  "run-pretooluse.js", "run-posttooluse.js", "run-stop.js",
-  "run-sessionstart.js", "run-userpromptsubmit.js",
-  "load-modules.js", "hook-log.js", "run-async.js",
-  "workflow.js", "workflow-cli.js"
-];
+// Shared file lists — single source of truth (see constants.js)
+var RUNNER_FILES = require(path.join(__dirname, "constants.js")).RUNNER_FILES;
 
 // ============================================================
 // 0. Hook Log Stats
@@ -849,7 +844,7 @@ function cmdUninstall(args, dryRun) {
   } else {
     uninstallChanges.push({ what: "settings.json", status: "not found" });
   }
-  var runnerFiles = RUNNER_FILES.concat(["setup.js"]);
+  var runnerFiles = RUNNER_FILES.concat(["setup.js", "report.js"]);
   for (var uf = 0; uf < runnerFiles.length; uf++) {
     var fp = path.join(HOOKS_DIR, runnerFiles[uf]);
     if (fs.existsSync(fp)) {
