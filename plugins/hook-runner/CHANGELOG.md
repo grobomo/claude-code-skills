@@ -2,6 +2,21 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.6.3] — 2026-04-05
+
+### Improved
+- **PreToolUse runner** — shared `input._git.tracking` alongside branch context; `remote-tracking-gate` no longer spawns its own `git config` call (~33ms savings per Edit/Write on feature branches)
+
+## [2.6.2] — 2026-04-05
+
+### Fixed
+- **spec-gate performance** — use shared `input._git.branch` from runner instead of spawning redundant `git rev-parse` (~45ms savings per Edit/Write) (#184)
+- **T105 test** — read VERSION from package.json at runtime instead of broken sed pattern (#183)
+- **T204 test** — remove path pattern in code comment that triggered portable-paths detection (#183)
+
+### Added
+- **Marketplace sync** — v2.6.1 → claude-code-skills
+
 ## [2.6.1] — 2026-04-05
 
 ### Fixed
