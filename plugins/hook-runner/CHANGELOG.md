@@ -2,6 +2,34 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.14.0] — 2026-04-07
+
+### Changed
+- **spec-gate TODO.md fallback tightened** (T340) — on main branch in mature projects (with `specs/`), spec-gate now requires a feature branch instead of allowing blanket edits via any unchecked TODO task. Simple projects still use TODO.md directly.
+
+### Added
+- **Test suite** — `test-T340-todo-fallback.sh` (3 tests).
+
+### Fixed
+- **README** — added missing `no-rules-gate` module to documentation.
+
+## [2.13.1] — 2026-04-07
+
+### Fixed
+- **Session isolation for hook state files** (T337) — temp flag files (`.claude-instruction-pending`, `.claude-turn-complete`, `.claude-bash-failures.json`, `.claude-self-analyze-cooldown`) now include `process.ppid` in filename. Different Claude Code tabs no longer interfere with each other's state.
+- **Session cleanup module** — `session-cleanup.js` (SessionStart) sweeps orphaned flag files from crashed sessions by checking if the PID in the filename is still running.
+- **Test suite** — `test-T337-session-isolation.sh` (8 tests: PID-scoped writes, cross-tab isolation, old-format ignored).
+
+## [2.13.0] — 2026-04-07
+
+### Added
+- **spec-gate Bash gating** (T338) — default-deny for Bash commands. Only allowlisted read-only commands (git, ls, cat, grep, etc.) pass without spec chain. Everything else requires spec → tasks → unchecked items.
+- **Hook editing project lock** (T339) — only hook-runner project sessions can edit hook infrastructure. Other projects get hard block.
+- **Bootstrap self-edit protection** (T339) — editing `hook-editing-gate.js` itself always blocked. Must be edited manually.
+- **Static weakening detection** (T339) — flags modules claiming to enforce but never blocking, bare `return null` replacements.
+- **Hook audit trail** (T339) — all edit attempts logged to `~/.system-monitor/hook-audit.jsonl`.
+- **Test suites** — `test-T338-spec-gate-bash.sh`, `test-T339-hook-lock.sh`, expanded `test-T118` (10→14 tests).
+
 ## [2.12.0] — 2026-04-07
 
 ### Added

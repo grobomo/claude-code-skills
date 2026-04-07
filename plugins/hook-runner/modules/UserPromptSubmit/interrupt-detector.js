@@ -1,4 +1,4 @@
-// WORKFLOW: self-improvement
+// WORKFLOW: shtd
 // WHY: User interrupts are social cues that Claude did something wrong.
 // In real life, people correct you with raised eyebrows or "wait, no."
 // In TUI, the interrupt IS that signal. When detected, this spawns a
@@ -14,8 +14,9 @@ var path = require("path");
 var os = require("os");
 var cp = require("child_process");
 
-var MARKER = path.join(os.tmpdir(), ".claude-turn-complete");
-var COOLDOWN_FILE = path.join(os.tmpdir(), ".claude-self-analyze-cooldown");
+// T337: Include parent PID in filename for session isolation across tabs
+var MARKER = path.join(os.tmpdir(), ".claude-turn-complete-" + process.ppid);
+var COOLDOWN_FILE = path.join(os.tmpdir(), ".claude-self-analyze-cooldown-" + process.ppid);
 var COOLDOWN_MS = 60000; // Don't spam analysis — 1 min cooldown
 var home = (process.env.HOME || process.env.USERPROFILE || "").replace(/\\/g, "/");
 
@@ -32,16 +33,23 @@ function isInterrupt() {
 }
 
 function isFirstPrompt() {
-  // Check prompt log — if fewer than 2 entries in the last minute, this is
-  // likely the first prompt of the session, not an interrupt
+  // Check prompt log — if last entry is >5 min old, this is a new session
+  // Read only the tail of the file to avoid parsing the entire JSONL
   var logPath = path.join(home, ".claude/hooks/prompt-log.jsonl");
   try {
-    var content = fs.readFileSync(logPath, "utf-8");
-    var lines = content.trim().split("\n");
-    if (lines.length < 2) return true;
-    var last = JSON.parse(lines[lines.length - 1]);
+    var fd = fs.openSync(logPath, "r");
+    var stat = fs.fstatSync(fd);
+    if (stat.size < 10) { fs.closeSync(fd); return true; }
+    // Read last 512 bytes — enough for the last JSONL entry
+    var readSize = Math.min(512, stat.size);
+    var buf = Buffer.alloc(readSize);
+    fs.readSync(fd, buf, 0, readSize, stat.size - readSize);
+    fs.closeSync(fd);
+    var tail = buf.toString("utf-8");
+    var lines = tail.trim().split("\n");
+    var lastLine = lines[lines.length - 1];
+    var last = JSON.parse(lastLine);
     var age = Date.now() - new Date(last.ts).getTime();
-    // If last prompt was more than 5 minutes ago, this is a new session
     return age > 300000;
   } catch (e) {
     return true;

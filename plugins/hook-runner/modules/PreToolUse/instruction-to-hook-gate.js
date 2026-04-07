@@ -1,4 +1,4 @@
-// WORKFLOW: self-improvement
+// WORKFLOW: shtd
 // WHY: User instructions ("always X") were forgotten next session. Must become hooks or SHTD workflows.
 "use strict";
 // PreToolUse: enforce that user instructions ("always X", "never Y") become hooks/rules.
@@ -17,7 +17,8 @@ var fs = require("fs");
 var path = require("path");
 var os = require("os");
 
-var FLAG_FILE = path.join(os.tmpdir(), ".claude-instruction-pending");
+// T337: Include parent PID in filename for session isolation across tabs
+var FLAG_FILE = path.join(os.tmpdir(), ".claude-instruction-pending-" + process.ppid);
 
 // Paths that count as "creating a hook or rule"
 var HOOK_RULE_PATHS = [
