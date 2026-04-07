@@ -8,21 +8,19 @@ Modular hook system for Claude Code. Enforce workflows, block mistakes, inject c
 
 Claude Code [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) let you run scripts at key moments: before a tool runs, after it runs, when a session starts, when it stops. hook-runner turns this into a **module system** — drop a `.js` file in a folder and it runs automatically.
 
-On top of modules, **workflows** group related modules into enforceable pipelines. Enable a workflow and its modules activate together. Disable it and they all go silent. This is how you scale from one person's preferences to a team's engineering standards.
+On top of modules, **workflows** group related modules into enforceable pipelines. Enable a workflow and its modules activate together. Disable it and they all go silent. This gives you a single place to organize all your hook behavior — no more hunting through `settings.json` entries.
 
 ## Why hook-runner?
 
-Claude Code hooks are powerful but raw: you write shell commands in `settings.json`, they run on every invocation, and there's no structure. This works for one person with three hooks. It doesn't work when you have 30+ enforcement rules, some that only apply in certain contexts, and teammates who need the same guardrails.
+Claude Code hooks are powerful but raw: you write shell commands in `settings.json`, they run on every invocation, and there's no structure. This works with three hooks. It doesn't work when you have 30+ enforcement rules, some that only apply in certain contexts, and you need to turn groups on and off.
 
-hook-runner solves three problems:
+hook-runner replaces direct `settings.json` editing. After install, you never touch `settings.json` for hooks again — hook-runner owns all five events and routes to your modules automatically.
 
-**1. Modules over shell commands.** Each rule is a `.js` file that receives structured input (tool name, file path, command) and returns a decision. No string parsing, no fragile regexes against `settings.json` entries. Modules are testable, documented, and version-controlled.
+**1. Modules over shell commands.** Each rule is a `.js` file that receives structured input (tool name, file path, command) and returns a decision. Modules are testable, documented, and version-controlled. Drop a file in a folder and it runs — remove it and it stops.
 
-**2. Workflows over individual modules.** You don't think "I need to enable spec-gate, branch-gate, test-checkpoint-gate, and worker-loop." You think "I want the SHTD development pipeline." Workflows group related modules so you enable one name and get a complete enforcement regime.
+**2. Workflows over individual modules.** You don't think "I need to enable spec-gate, branch-gate, test-checkpoint-gate, and worker-loop." You think "I want the SHTD development pipeline." Workflows group related modules so you enable one name and get a complete enforcement regime. Disable it and they all go silent. This is how you manage 80+ modules without losing track.
 
-**3. When to use which.** Use a **raw hook** (in `settings.json`) for one-off scripts that don't need to coordinate with anything — a notification sound on completion, a logging call. Use a **module** when the rule should be testable, has a `// WHY:` story behind it, and belongs to a category of enforcement. Use a **workflow** when multiple modules work together to enforce a process — a development pipeline, a safety regime, a deployment checklist.
-
-The progression is: raw hooks for experiments, modules for durable rules, workflows for team-wide standards.
+**3. Portability.** Export your module config as YAML (`--export`), sync it to another machine (`--sync`), or share a workflow definition. Workflows also make it easy to switch contexts — enable `customer-data-guard` during incident response, disable it after.
 
 ## Integrating with other Claude Code tools
 
@@ -57,7 +55,7 @@ To undo everything: `node setup.js --uninstall --confirm`
 
 ## Workflows
 
-Workflows are the primary abstraction. Instead of managing 30+ individual modules, you enable a workflow and its modules activate automatically.
+Workflows are the primary abstraction. Instead of managing 80+ individual modules, you enable a workflow and its modules activate automatically.
 
 ```bash
 node setup.js --workflow list              # see available workflows
@@ -71,16 +69,11 @@ node setup.js --workflow query Edit        # which workflows affect Edit?
 
 | Workflow | Modules | What it enforces |
 |----------|---------|-----------------|
-| `shtd` | 16 | Spec → tasks → branch → test → implement → PR. The full development pipeline. |
-| `session-management` | 12 | Auto-continue, context injection, health checks, backups, terminal title, workflow summary. |
-| `code-quality` | 10 | Prevents hardcoded paths, fragile heuristics, missed test coverage, stale docs. |
-| `infra-safety` | 10 | No ad-hoc commands, required tags, env var checks, config audit. |
-| `self-improvement` | 6 | Detect instructions, interrupts, and troubleshooting patterns; enforce durable rules. |
-| `messaging-safety` | 1 | Blocks outbound messages (Teams, email) unless target is explicitly authorized. |
+| `shtd` | 69 | Spec-Hook-Test-Driven — the full development pipeline. Enforces spec → branch → test → implement → PR, plus code quality, infrastructure safety, messaging guards, session lifecycle, and self-improvement. |
+| `customer-data-guard` | 3 | Read-only incident response — blocks env changes, data exfil, and V1 modifications. |
+| `dispatcher-worker` | 3 | Role-aware fleet workflow. Dispatcher specs/distributes, workers implement/test/PR. |
 | `no-local-docker` | 1 | Blocks local Docker commands, forces remote infrastructure. |
 | `cross-project-reset` | 1 | Blocks cross-project file access, forces proper project switching. |
-| `customer-data-guard` | 3 | Read-only incident response — blocks env changes, data exfil, and V1 modifications. |
-| `dispatcher-worker` | 1 | Role-aware fleet workflow. Dispatcher specs/distributes, workers implement/test/PR. |
 
 ### Workflow State Machine
 
@@ -271,6 +264,8 @@ node setup.js --workflow sync-live     # copy to live hooks
 # Monitoring
 node setup.js --stats                  # text summary of hook activity
 node setup.js --perf                   # module timing analysis
+node setup.js --integrity [--json]     # verify live modules match repo
+node setup.js --report --analyze       # heuristic quality analysis
 node setup.js --prune [N]             # prune log entries older than N days
 
 # Development
@@ -361,6 +356,7 @@ Full catalog in `modules/` directory:
 |--------|-------------|
 | `commit-msg-check` | Blocks WIP/fixup commits and long first lines |
 | `crlf-detector` | Warns when Write/Edit produces CRLF in shell scripts, YAML, Python |
+| `disk-space-detect` | Detects disk space errors in tool output, activates alert mode |
 | `hook-autocommit` | Auto-commits hook module edits |
 | `rule-hygiene` | Validates rule files are single-topic, under 20 lines |
 | `settings-audit-log` | Records config modifications to audit log |
@@ -401,13 +397,12 @@ Full catalog in `modules/` directory:
 | Module | Description |
 |--------|-------------|
 | `backup-check` | Warns if config backup is stale |
-| `config-sync` | Auto-syncs ~/.claude config to git remote |
-| `hook-integrity-check` | Verifies live modules match repo, auto-repairs drift, checks workflow compliance |
 | `load-instructions` | Injects working instructions at session start |
 | `load-lessons` | Injects recent self-analysis lessons |
 | `project-health` | Runs health check, warns about issues |
 | `reflection-score-inject` | Injects reflection score/level/streak into session context |
 | `session-cleanup` | Sweeps orphaned session-scoped temp files from crashed sessions |
+| `session-collision-detector` | Warns if another Claude Code session is active on the same project |
 | `terminal-title` | Sets terminal title to project folder name |
 | `workflow-summary` | Injects active workflow summary |
 
