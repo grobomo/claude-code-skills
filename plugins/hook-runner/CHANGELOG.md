@@ -2,6 +2,55 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.15.0] — 2026-04-07
+
+### Added
+- **Brain bridge** (T331) — self-reflection.js now tries unified-brain `/ask` endpoint first for LLM analysis (fast, has three-tier memory). Falls back to direct LLM subprocess when brain is unavailable. Analysis source (`brain` vs `claude-p`) logged in reflection output and session summaries.
+- `isBrainAvailable()` — health check with 2s timeout, cached per invocation.
+- `callBrain()` — POST `/ask` with structured reflection payload (question, source, channel, metadata).
+- `analyze()` — orchestrator: brain-first with automatic fallback.
+- `BRAIN_URL` env var for configuring brain endpoint (default `http://localhost:8790`).
+- **Test suite** — `test-T331-brain-bridge.sh` (8 tests: mock brain, fallback, payload validation).
+
+## [2.14.6] — 2026-04-07
+
+### Changed
+- **DRY** (T361) — extracted shared `isPidRunning` into `_is-pid-running.js` helper. Underscore prefix convention: `_helper.js` files are utilities skipped by `load-modules.js` and `test-modules.sh`.
+
+## [2.14.5] — 2026-04-07
+
+### Added
+- **Session collision detector** (T351) — SessionStart module warns when multiple Claude Code sessions are active on the same project. Writes lock file per project+PID, detects active sessions, warns with PIDs and branches. Prevents context-reset tab proliferation chaos.
+- **Session cleanup** updated to sweep stale session-lock files from crashed sessions.
+- **Test suite** — `test-T351-session-collision.sh` (8 tests).
+
+## [2.14.4] — 2026-04-07
+
+### Fixed
+- **README.md** — updated workflow table (10 → 5 workflows with accurate module counts after T313 consolidation), added `--integrity` and `--report --analyze` to CLI reference, removed stale SessionStart modules.
+
+## [2.14.3] — 2026-04-07
+
+### Added
+- **HOOK_RUNNER_TEST guard** — 6 Stop modules (chat-export, config-sync, drift-review, push-unpushed, self-reflection, session-brain-analysis) skip expensive operations when `HOOK_RUNNER_TEST=1` is set, preventing network/git/claude-p calls during test validation.
+- **Per-module test timeout** — individual module load/call tests in `test-modules.sh` now have a 10s safety timeout.
+
+### Fixed
+- **drift-review.js** — added missing `// WORKFLOW: shtd` tag, fixed return type from bare string to `{text: status}` object.
+- **self-reflection.js** — detached HEAD now returns `"HEAD"` instead of empty string.
+- **Test suite timeout** — increased per-suite timeout from 120s to 360s for Windows CI stability.
+
+## [2.14.2] — 2026-04-07
+
+### Fixed
+- **workflow-summary.js** — defensive try/catch around `findWorkflows()`/`readState()` prevents crash when run outside a project context (fixes module validation test failure).
+- **T114 test cleanup** — hardened YAML cleanup with `git show HEAD` fallback to prevent temp module name corruption in `no-local-docker.yml`.
+
+### Changed
+- **git branch detection** — `spec-gate.js`, `branch-pr-gate.js`, `enforcement-gate.js` now read `.git/HEAD` directly instead of spawning `git rev-parse` (faster on Windows, avoids timeout under CI load).
+- **run-modules sync** — added 32 missing modules to `run-modules/` that existed in catalog but were never tracked.
+- Removed unused `child_process` require from `spec-gate.js`, `branch-pr-gate.js`.
+
 ## [2.14.1] — 2026-04-07
 
 ### Fixed

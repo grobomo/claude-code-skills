@@ -10,6 +10,8 @@ var path = require("path");
 var DEBOUNCE_MS = 3600000; // 1 hour — no need to sync on every session
 
 module.exports = function(input) {
+  // Skip git operations during test validation
+  if (process.env.HOOK_RUNNER_TEST) return null;
   var claudeDir = path.join(process.env.HOME || process.env.USERPROFILE, ".claude");
 
   // Debounce: skip if last successful sync was less than 1 hour ago
@@ -82,9 +84,9 @@ module.exports = function(input) {
     // Push current branch (not hardcoded main — repo may be on a different branch)
     var branch = "";
     try {
-      branch = cp.execSync("git rev-parse --abbrev-ref HEAD", {
-        cwd: claudeDir, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"]
-      }).trim();
+      // Read .git/HEAD directly — avoids spawning git (slow on Windows)
+      var headContent = fs.readFileSync(path.join(claudeDir, ".git", "HEAD"), "utf-8").trim();
+      branch = headContent.indexOf("ref: refs/heads/") === 0 ? headContent.slice(16) : "";
     } catch (e) { branch = "main"; }
     if (!/^[a-zA-Z0-9._\-\/]+$/.test(branch)) branch = "main";
 

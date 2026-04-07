@@ -13,6 +13,7 @@ var path = require("path");
 var cp = require("child_process");
 
 module.exports = function(input) {
+  if (process.env.HOOK_RUNNER_TEST) return null;
   var projectDir = process.env.CLAUDE_PROJECT_DIR || "";
   if (!projectDir) return null;
 
@@ -64,9 +65,9 @@ module.exports = function(input) {
   // Get current branch
   var branch = "";
   try {
-    branch = cp.execSync("git rev-parse --abbrev-ref HEAD", {
-      cwd: projectDir, encoding: "utf8", timeout: 5000
-    }).trim();
+    // Read .git/HEAD directly — avoids spawning git (slow on Windows)
+    var headContent = fs.readFileSync(path.join(projectDir, ".git", "HEAD"), "utf-8").trim();
+    branch = headContent.indexOf("ref: refs/heads/") === 0 ? headContent.slice(16) : "";
   } catch (e) { return null; }
 
   // Get recent uncommitted changes
