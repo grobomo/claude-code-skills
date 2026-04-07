@@ -2,6 +2,112 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.11.0] — 2026-04-06
+
+### Added
+- **Session summary compaction** (`reflection-sessions.jsonl`) — one-line JSON summary after each reflection (files edited, issues found, score delta). Last 3 summaries injected into `claude -p` prompt for cross-session awareness. Interim short-term memory until brain integration (T331).
+- **Reflection-gate scope enforcement** (T330) — replaced broad `/hooks/` allow with specific hook-runner module paths. Self-reflection can self-repair its own modules (`run-modules/`, `hook-runner/modules/`, runners, workflow files) but delegates everything else via TODOs.
+- **Self-Reflection Architecture section** in CLAUDE.md — documents interim (direct `claude -p`) vs target (brain plugin) architecture.
+
+### Fixed
+- **DRY self-reflection** — `callClaude()` returns `{raw, parsed}`, removing duplicate `parseResponse()` call.
+- **Cost optimization** — skip `claude -p` when no Edit/Write in recent hook-log entries (read-only/Bash-only stops).
+- **Nested-claude gate FP** — `no-nested-claude.js` now skips `git`/`gh_auto` commands (path strings containing "claude" triggered false positives).
+
+## [2.10.0] — 2026-04-06
+
+### Added
+- **Gamified reflection scoring** (`reflection-score.js`) — points for clean reflections (+10), autonomous stretches (+3/10 tool calls), TODO follow-through (+5). Penalties for user corrections (-5), dismissed improvements (-3), workflow violations (-10). Levels: Novice → Apprentice → Journeyman → Expert → Master.
+- **Intervention tracking** — analyzes hook-log for user correction patterns ("no", "stop", "wrong"), interrupts, and autonomous stretches. The ultimate autonomy metric: how much user time are you saving vs wasting?
+- **Full claude -p audit logging** (`reflection-claude-log.jsonl`) — every Stop runs LLM analysis. All prompts, raw responses, parsed results, and timing logged for audit and tuning.
+- **Score injection at SessionStart** (`reflection-score-inject.js`) — every new session sees its score, level, streak, and the WHY behind the system.
+- **Self-reflection prompt improvements** — now checks for dismissed improvements ("good enough for now") and missed TODOs. Auto-writes discovered TODOs to TODO.md.
+- **Motivation loop** — the WHY is baked into the score file: "This score measures how well you protect the user's time."
+
+### Fixed
+- **Reflection-gate loophole** — removed `self-reflection.jsonl` from allow list. Claude can no longer edit the reflection log to unblock itself.
+- **Self-reflection always runs** — removed rate limiting from claude -p calls. Every Stop is a checkpoint.
+
+## [2.9.0] — 2026-04-06
+
+### Added
+- **Self-reflection system** — LLM-powered introspection for hook-runner itself. `self-reflection.js` (Stop, async) calls `claude -p` to review recent gate decisions, checking if edits were appropriate for the current branch/task context. `reflection-gate.js` (PreToolUse) blocks production code edits if unresolved high/medium severity issues exist. Together they form a feedback loop: hooks watch Claude → self-reflection watches hooks → reflection-gate enforces corrections.
+- **Spec-gate task ID enforcement (T321)** — if branch name contains TXXX pattern, verifies that specific task is unchecked in TODO.md or specs/*/tasks.md. Previously only checked that *any* task existed, allowing edits for unrelated tasks.
+- **Cross-project guidance (T322)** — all spec-gate block messages now include instructions for cross-project workflow (write TODOs in other project → context_reset.py → resume).
+- **"Spec before code" reminder (T323)** — all spec-gate block messages explicitly say "Write the spec FIRST, then create tasks, then code."
+- **cross-project-todo-gate** — new PreToolUse module, blocks writing cross-project TODO items into local TODO.md.
+- **no-adhoc-commands** — synced from live with Azure/terraform/azcopy/RDP blocks.
+
+### Fixed
+- **cross-project-todo-gate** — replaced hardcoded project prefixes (`_grobomo/`, `_tmemu/`) with dynamic directory discovery under PROJECTS_ROOT.
+
+## [2.8.2] — 2026-04-06
+
+### Added
+- **`--analyze --deep`** — runs LLM analysis via `claude -p` (5 min timeout) for deeper semantic insights (coverage gaps, DRY overlap, consolidation recommendations). Saves prompt to `~/.claude/reports/analysis-prompt.txt` for manual re-run.
+- **`--analyze --input <file>`** — loads pre-computed LLM analysis JSON and merges with local heuristics. LLM takes priority for qualitative categories; performance entries are merged.
+
+### Fixed
+- **Operator precedence bug in healthCheck** — `!subFiles[si].slice(-3) === ".js"` always evaluated to `false`. Fixed to `subFiles[si].slice(-3) !== ".js"`. Project-scoped modules in subdirs were silently skipped during health validation.
+- **ES5 consistency** — replaced remaining `.endsWith()`/`.startsWith()` in setup.js (14), workflow.js (7), workflow-cli.js (8) with `.slice()`/`.indexOf()`/`.charAt()`
+
+## [2.8.1] — 2026-04-05
+
+### Fixed
+- **load-modules.js** — replaced 2 remaining `.endsWith()` ES6 calls with `indexOf()` for ES5 consistency
+
+## [2.8.0] — 2026-04-05
+
+### Added
+- **`--analyze` flag** for `--report` — generates a System Analysis section with quality score, coverage gaps, DRY issues, performance observations, redundancy detection, and recommendations. Uses heuristic rules (no external LLM dependency).
+- **force-push-gate** (PreToolUse) — blocks `git push --force` to main/master. Force-pushing destroys shared history with no undo.
+- **crlf-detector** (PostToolUse) — warns when Write/Edit produces CRLF line endings in shell scripts, YAML, Python, and other Unix-sensitive files.
+- **git-destructive-guard** (PreToolUse) — blocks `git reset --hard`, `git checkout .`, `git clean -f` without diagnosis.
+- **config-sync** (Stop) — auto-commits and pushes ~/.claude changes to cloud backup at session end.
+
+### Performance
+- **Merged hook-integrity-check into hook-integrity-monitor** — eliminated ~378ms from SessionStart. The UserPromptSubmit monitor now does a full scan on first invocation (or every hour), then spot-checks between.
+- **Debounced config-sync** — skips if last successful sync was <1 hour ago. Cuts SessionStart from ~4093ms to ~400ms on subsequent sessions within the same hour.
+
+### Fixed
+- **4 test suites fixed** — T094 (module docs), T097 (workflow modules), T101 (workflow CLI), T104 (workflow summary) all referenced `code-quality` workflow consolidated into `shtd` in T313. Tests now use correct workflow names.
+- **T094/T097 `find` hangs on Windows** — replaced `find` with `node` for module enumeration. Git Bash `find` is extremely slow on Windows.
+- **Analysis spike detection** — raised threshold from 30x to 50x ratio and added 500ms floor to reduce noise from normal git cold-call spikes.
+- **Analysis redundancy threshold** — raised from 1000 to 2000 calls with "(may be preventive)" qualifier for gates that succeed because users learned the rules.
+- **Duplicate WHY detection** — now shows event/module path (e.g. `SessionStart/config-sync and Stop/config-sync`) instead of ambiguous bare names.
+- **README module table** — added `crlf-detector`, `force-push-gate`, `git-destructive-guard`, `config-sync` (Stop).
+
+### Removed
+- **gsd-gate** — archived from live hooks. Fully superseded by test-checkpoint-gate.
+- **hook-integrity-check** (SessionStart) — merged into hook-integrity-monitor (UserPromptSubmit).
+- **test-tmp-mod-200506** — test artifact archived from catalog.
+
+## [2.7.1] — 2026-04-05
+
+### Performance
+- **config-sync moved from SessionStart to Stop** — cuts SessionStart overhead from ~4093ms to ~776ms (81% reduction). Config sync runs at session end instead of start, where the 3-7s git push latency isn't blocking the user.
+
+### Fixed
+- **CHANGELOG duplicate** — report expand/collapse fix was listed in both 2.7.0 and 2.6.4; removed duplicate from 2.6.4.
+- **backup-check** — removed "async example" language; this is a production module, not a demo.
+
+## [2.7.0] — 2026-04-05
+
+### Changed
+- **Workflow consolidation** — merged 6 active workflows (code-quality, infra-safety, messaging-safety, self-improvement, session-management) into **shtd**. Down from 11 workflows to 5 (2 active: shtd + customer-data-guard, 3 dormant). shtd now has 58 modules covering the entire dev workflow: spec→PR pipeline, code quality, infrastructure safety, messaging guards, session lifecycle, and self-improvement.
+
+### Fixed
+- **Report expand/collapse** — `toggleModule` used `nextElementSibling` which pointed to `.module-why` instead of `.module-detail` when WHY text was present. Now uses `parentElement.querySelector(".module-detail")`.
+
+### Added
+- **`--analyze` command** — generates report with LLM-powered analysis (quality score, coverage gaps, DRY issues, performance observations, recommendations). Uses `claude -p` when run from terminal; gracefully skips when unavailable.
+- **scripts/archive-live-workflows.sh** — reusable script to archive stale workflow YAMLs from live hooks dir
+
+## [2.6.4] — 2026-04-05
+
+### Fixed
+- **hook-integrity-monitor rate limiter** — in-memory `_lastCheckTime` was always 0 (each hook invocation is a fresh Node process). Replaced with file-based timestamp in `~/.claude/hooks/.integrity-last-check`. Saves ~85ms per prompt when rate-limited.
+
 ## [2.6.3] — 2026-04-05
 
 ### Improved

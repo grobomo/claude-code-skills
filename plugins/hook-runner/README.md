@@ -318,13 +318,17 @@ Full catalog in `modules/` directory:
 | `disk-space-guard` | Blocks destructive commands after disk space errors |
 | `enforcement-gate` | Requires git repo + TODO.md before edits |
 | `env-var-check` | Blocks edits if required env vars missing |
+| `force-push-gate` | Blocks git push --force to main/master |
+| `git-destructive-guard` | Blocks git reset --hard, checkout ., clean -f without diagnosis |
 | `git-rebase-safety` | Warns about reversed --ours/--theirs during rebase |
 | `hook-editing-gate` | Enforces WORKFLOW tag, WHY comment, exit(1) in hook files |
 | `instruction-to-hook-gate` | Converts user directives into hook modules |
 | `messaging-safety-gate` | Blocks outbound messaging unless authorized |
-| `no-adhoc-commands` | Blocks raw aws/ssh/docker/kubectl, forces scripts/ |
+| `cross-project-todo-gate` | Blocks writing cross-project TODOs into local TODO.md |
+| `no-adhoc-commands` | Blocks raw aws/ssh/docker/kubectl/az/terraform, forces scripts/ |
 | `no-focus-steal` | Blocks background processes that steal window focus |
 | `no-fragile-heuristics` | Blocks pixel-counting heuristics |
+| `reflection-gate` | Blocks edits if self-reflection found unresolved issues |
 | `no-hardcoded-paths` | Blocks hardcoded absolute paths in code |
 | `no-passive-rules` | Blocks .md rules when a hook module is better |
 | `pr-per-task-gate` | Requires task ID in PR titles |
@@ -355,6 +359,7 @@ Full catalog in `modules/` directory:
 | Module | Description |
 |--------|-------------|
 | `commit-msg-check` | Blocks WIP/fixup commits and long first lines |
+| `crlf-detector` | Warns when Write/Edit produces CRLF in shell scripts, YAML, Python |
 | `hook-autocommit` | Auto-commits hook module edits |
 | `rule-hygiene` | Validates rule files are single-topic, under 20 lines |
 | `settings-audit-log` | Records config modifications to audit log |
@@ -375,11 +380,14 @@ Full catalog in `modules/` directory:
 |--------|-------------|
 | `auto-continue` | Blocks stopping — always find the next task |
 | `chat-export` | Auto-exports session to HTML on stop |
+| `config-sync` | Auto-commits and pushes ~/.claude changes to cloud backup |
 | `drift-review` | Checks work matches the active spec task |
 | `log-gotchas` | Captures debugging lessons before stopping |
 | `mark-turn-complete` | Writes turn marker for interrupt detection |
 | `never-give-up` | Blocks "impossible" — forces research first |
 | `push-unpushed` | Blocks stop with unpushed commits |
+| `reflection-score` | Gamified scoring system — tracks autonomy, corrections, streaks |
+| `self-reflection` | LLM-powered review of recent gate decisions (async, calls claude -p) |
 | `test-before-done` | Reminds to run e2e tests before done |
 
 #### Project-Scoped Stop
@@ -396,6 +404,7 @@ Full catalog in `modules/` directory:
 | `load-instructions` | Injects working instructions at session start |
 | `load-lessons` | Injects recent self-analysis lessons |
 | `project-health` | Runs health check, warns about issues |
+| `reflection-score-inject` | Injects reflection score/level/streak into session context |
 | `terminal-title` | Sets terminal title to project folder name |
 | `workflow-summary` | Injects active workflow summary |
 
