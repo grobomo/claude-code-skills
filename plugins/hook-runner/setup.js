@@ -66,14 +66,17 @@ function parseLogLines(lines, stats, maxSamples) {
 
     var key = entry.event + "/" + entry.module;
     if (!stats[key]) {
-      stats[key] = { total: 0, pass: 0, block: 0, error: 0, text: 0, deny: 0, msTotal: 0, msCount: 0, msMax: 0, samples: [] };
+      stats[key] = { total: 0, pass: 0, block: 0, error: 0, text: 0, deny: 0, msTotal: 0, msCount: 0, msMax: 0, samples: [], firstTs: "", lastTs: "", lastBlockTs: "" };
     }
     var s = stats[key];
     s.total++;
+    var ts = entry.ts || "";
+    if (ts && (!s.firstTs || ts < s.firstTs)) s.firstTs = ts;
+    if (ts && ts > s.lastTs) s.lastTs = ts;
     var r = entry.result || "pass";
     if (r === "pass") s.pass++;
-    else if (r === "block") s.block++;
-    else if (r === "deny") { s.block++; s.deny++; }
+    else if (r === "block") { s.block++; if (ts > s.lastBlockTs) s.lastBlockTs = ts; }
+    else if (r === "deny") { s.block++; s.deny++; if (ts > s.lastBlockTs) s.lastBlockTs = ts; }
     else if (r === "error") s.error++;
     else if (r === "text") s.text++;
 
@@ -391,25 +394,39 @@ function updateSettings(dryRun) {
 
   if (!settings.hooks) settings.hooks = {};
 
+  // T387/T393: On Windows, use run-hidden.js wrapper to prevent console window focus steal.
+  // T393: Use fully-resolved paths on Windows to avoid $HOME shell expansion which
+  // forces cmd.exe (visible popup). With resolved paths, Claude Code can spawn node
+  // directly without a shell wrapper.
+  var isWin = process.platform === "win32";
+  function hookCmd(runner) {
+    if (isWin) {
+      // Resolve path so no shell expansion ($HOME) is needed — avoids cmd.exe popup
+      var hooksDir = path.join(os.homedir(), ".claude", "hooks").replace(/\\/g, "/");
+      return 'node "' + hooksDir + '/run-hidden.js" ' + runner;
+    }
+    return 'node "$HOME/.claude/hooks/' + runner + '"';
+  }
+
   // Define the hook-runner settings.json entries
   var runnerConfig = {
     SessionStart: [
-      { hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-sessionstart.js"', timeout: 5 }] }
+      { hooks: [{ type: "command", command: hookCmd("run-sessionstart.js"), timeout: 5 }] }
     ],
     Stop: [
-      { hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-stop.js"', timeout: 5 }] }
+      { hooks: [{ type: "command", command: hookCmd("run-stop.js"), timeout: 5 }] }
     ],
     PreToolUse: [
-      { matcher: "Edit", hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-pretooluse.js"', timeout: 5 }] },
-      { matcher: "Write", hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-pretooluse.js"', timeout: 5 }] },
-      { matcher: "Bash", hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-pretooluse.js"', timeout: 5 }] }
+      { matcher: "Edit", hooks: [{ type: "command", command: hookCmd("run-pretooluse.js"), timeout: 5 }] },
+      { matcher: "Write", hooks: [{ type: "command", command: hookCmd("run-pretooluse.js"), timeout: 5 }] },
+      { matcher: "Bash", hooks: [{ type: "command", command: hookCmd("run-pretooluse.js"), timeout: 5 }] }
     ],
     PostToolUse: [
-      { matcher: "Write", hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-posttooluse.js"', timeout: 5 }] },
-      { matcher: "Edit", hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-posttooluse.js"', timeout: 5 }] }
+      { matcher: "Write", hooks: [{ type: "command", command: hookCmd("run-posttooluse.js"), timeout: 5 }] },
+      { matcher: "Edit", hooks: [{ type: "command", command: hookCmd("run-posttooluse.js"), timeout: 5 }] }
     ],
     UserPromptSubmit: [
-      { hooks: [{ type: "command", command: 'node "$HOME/.claude/hooks/run-userpromptsubmit.js"', timeout: 5 }] }
+      { hooks: [{ type: "command", command: hookCmd("run-userpromptsubmit.js"), timeout: 5 }] }
     ]
   };
 

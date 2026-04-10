@@ -327,6 +327,7 @@ Full catalog in `modules/` directory:
 | `no-hardcoded-paths` | Blocks hardcoded absolute paths in code |
 | `no-passive-rules` | Blocks .md rules when a hook module is better |
 | `no-rules-gate` | Blocks creation of ~/.claude/rules/ files (use hook modules instead) |
+| `pr-first-gate` | Blocks spec/code edits on branches without an open PR |
 | `pr-per-task-gate` | Requires task ID in PR titles |
 | `preserve-iterated-content` | Warns on full-file rewrites of iterated files |
 | `remote-tracking-gate` | Blocks edits if branch not pushed to remote |
@@ -341,6 +342,8 @@ Full catalog in `modules/` directory:
 | `worker-loop` | Blocks PR creation until task's e2e test passes |
 | `workflow-compliance-gate` | Blocks if globally enforced workflow disabled at project level |
 | `workflow-gate` | Enforces step order in active workflows |
+| `windowless-spawn-gate` | Blocks module writes using execSync without windowsHide:true |
+| `worktree-gate` | Blocks feature branch edits unless session is in a git worktree |
 
 #### Project-Scoped PreToolUse
 | Module | Project | Description |
@@ -358,6 +361,7 @@ Full catalog in `modules/` directory:
 | `crlf-detector` | Warns when Write/Edit produces CRLF in shell scripts, YAML, Python |
 | `disk-space-detect` | Detects disk space errors in tool output, activates alert mode |
 | `hook-autocommit` | Auto-commits hook module edits |
+| `hook-health-monitor` | Detects hook crashes, exit code mismatches, timeouts, repeated failures |
 | `rule-hygiene` | Validates rule files are single-topic, under 20 lines |
 | `settings-audit-log` | Records config modifications to audit log |
 | `test-coverage-check` | Warns when source files modified without tests |
@@ -399,6 +403,8 @@ Full catalog in `modules/` directory:
 | `backup-check` | Warns if config backup is stale |
 | `load-instructions` | Injects working instructions at session start |
 | `load-lessons` | Injects recent self-analysis lessons |
+| `hook-self-test` | Validates runner exit codes and block processing at session start |
+| `lesson-effectiveness` | Detects repeated self-analysis lessons, escalates to gate candidates |
 | `project-health` | Runs health check, warns about issues |
 | `reflection-score-inject` | Injects reflection score/level/streak into session context |
 | `session-cleanup` | Sweeps orphaned session-scoped temp files from crashed sessions |

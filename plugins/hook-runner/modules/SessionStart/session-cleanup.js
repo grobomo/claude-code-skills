@@ -6,7 +6,7 @@
 var fs = require("fs");
 var path = require("path");
 var os = require("os");
-var cp = require("child_process");
+var isPidRunning = require("./_is-pid-running");
 
 var TMP = os.tmpdir();
 var PREFIX = ".claude-";
@@ -18,24 +18,6 @@ var STATE_NAMES = [
   "self-analyze-cooldown-",
   "bash-failures-"
 ];
-
-function isPidRunning(pid) {
-  try {
-    if (process.platform === "win32") {
-      var out = cp.execSync("tasklist /FI \"PID eq " + pid + "\" /NH", {
-        encoding: "utf-8",
-        timeout: 3000,
-        stdio: ["pipe", "pipe", "pipe"]
-      });
-      return out.indexOf("" + pid) !== -1;
-    } else {
-      process.kill(pid, 0);
-      return true;
-    }
-  } catch (e) {
-    return false;
-  }
-}
 
 module.exports = function() {
   var cleaned = 0;
@@ -61,6 +43,24 @@ module.exports = function() {
           matched = true;
           break;
         }
+      }
+    }
+    // T351: Also clean session-lock files from collision detector
+    // Pattern: .claude-session-lock-<hash>-<pid>
+    var LOCK_PREFIX = ".claude-session-lock-";
+    for (var k = 0; k < files.length; k++) {
+      var lf = files[k];
+      if (lf.indexOf(LOCK_PREFIX) !== 0) continue;
+      // Extract PID from end of filename (after last dash)
+      var lastDash = lf.lastIndexOf("-");
+      if (lastDash <= LOCK_PREFIX.length) continue;
+      var lockPidStr = lf.substring(lastDash + 1);
+      var lockPid = parseInt(lockPidStr, 10);
+      if (!isNaN(lockPid) && lockPid > 0 && lockPid !== process.ppid && !isPidRunning(lockPid)) {
+        try {
+          fs.unlinkSync(path.join(TMP, lf));
+          cleaned++;
+        } catch (e) { /* skip */ }
       }
     }
   } catch (e) { /* tmpdir read failed */ }

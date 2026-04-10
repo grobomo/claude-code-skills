@@ -2,6 +2,36 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.19.0] — 2026-04-10
+
+### Fixed
+- **Auto-continue not firing** (T390-ac) — root cause: run-stop.js ran ALL modules sequentially (T376 change), but config-sync takes 16s and the 5s hook timeout killed the process before auto-continue's block result could return. Fix: blocking modules (auto-continue, never-give-up) run synchronously first (14ms), block output is emitted immediately, then remaining modules spawn as a detached background process (`run-stop-bg.js`). All runners now read `HOOK_INPUT_FILE` env var to avoid Windows stdin pipe deadlock.
+- **run-hidden.js stdin pipe deadlock** — replaced synchronous `readFileSync(0)` stdin with async read + 500ms timeout safety. Writes stdin data to temp file (`HOOK_INPUT_FILE`) so child runners avoid the Windows pipe deadlock entirely.
+
+### Added
+- **Watchdog health log analysis** (T390-wh) — `checkHealthLog()` in `watchdog.js` reads `hook-health.jsonl`, detects exit code mismatches, repeated crashes, stop-never-blocking anomalies, and timeout kills. Watchdog scheduled task installed (every 10min).
+- **windowless-spawn-gate** (T393) — PreToolUse module blocks `execSync`/`spawnSync` calls without `windowsHide: true` in hook module source code.
+- **run-stop-bg.js** — detached background runner for non-blocking Stop modules (config-sync, drift-review, self-reflection, etc.). Spawned by run-stop.js after emitting any block result.
+- **windowsHide on remaining spawn calls** (T390-whi) — added `windowsHide: true` to 3 remaining spawn calls in chat-export, interrupt-detector.
+- **Resolved paths in settings.json** (T393) — setup.js now writes fully-resolved `os.homedir()` paths on Windows instead of `$HOME`, eliminating the need for cmd.exe shell expansion.
+
+## [2.18.1] — 2026-04-09
+
+### Added
+- **Lesson effectiveness monitor** (T382) — `lesson-effectiveness` SessionStart module scans `self-analysis-lessons.jsonl` for repeated patterns (3+ similar lessons). Writes escalations to `lesson-escalations.jsonl` and warns at session start. 11 tests.
+- **cwd-drift-detector tightened** (T391f) — blocks `git switch -c`, `git checkout -b`, `git branch` when targeting another project. Narrowed context-reset allowlist. 2 new tests (12 total).
+
+## [2.18.0] — 2026-04-09
+
+### Fixed
+- **run-hidden.js spawnSync** (T391a) — replaced async `spawn` with `spawnSync` to eliminate orphan processes. Async spawn left grandchildren (git, curl) alive after hook exit, causing Claude Code to run visible `taskkill /T /F` popups. spawnSync ensures the entire child tree is dead before returning.
+- **run-hidden.js missing from installer** (T391b) — added `run-hidden.js` to `RUNNER_FILES` in `constants.js` and `files` in `package.json`. Previously, `--install` and `--upgrade` never copied it.
+- **hook-editing-gate block message** (T391d) — now includes the actual `context_reset.py` launch command instead of a vague "start a session" instruction.
+
+### Added
+- **Runtime hook health monitor** (T390) — `run-hidden.js` logs every invocation to `hook-health.jsonl` (runner name, exit code, stdout/stderr sizes, duration, signal). New `hook-health-monitor` PostToolUse module checks recent entries for crashes, exit code mismatches, timeouts, and repeated failures. 14 tests.
+- **Output logging** (T391a) — hook stdout/stderr logged to `~/.system-monitor/hook-output.log` for debugging (CMD windows flash too fast to read).
+
 ## [2.17.0] — 2026-04-08
 
 ### Added

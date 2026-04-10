@@ -78,11 +78,17 @@ modules:
   - rule-hygiene
   - test-coverage-check
   - update-stale-docs
+  - hook-health-monitor
+  - hook-self-test
+  - windowless-spawn-gate
+  - worktree-gate
+  - pr-first-gate
   # Infrastructure safety (was: infra-safety)
   - aws-tagging-gate
   - crlf-detector
   - crlf-ssh-key-check
   - disk-space-guard
+  - disk-space-detect
   - force-push-gate
   - env-var-check
   - session-cleanup
@@ -109,6 +115,7 @@ modules:
   - reflection-score
   - reflection-score-inject
   - session-brain-analysis
+  - lesson-effectiveness
   # Session lifecycle (was: session-management)
   - auto-continue
   - backup-check
@@ -120,5 +127,6 @@ modules:
   - mark-turn-complete
   - never-give-up
   - project-health
+  - session-collision-detector
   - terminal-title
   - workflow-summary

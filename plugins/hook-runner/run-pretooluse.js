@@ -10,7 +10,10 @@ var runAsync = require("./run-async");
 
 var input;
 try {
-  input = JSON.parse(fs.readFileSync(0, "utf-8"));
+  var raw = process.env.HOOK_INPUT_FILE
+    ? fs.readFileSync(process.env.HOOK_INPUT_FILE, "utf-8")
+    : fs.readFileSync(0, "utf-8");
+  input = JSON.parse(raw);
 } catch (e) {
   process.exit(0);
 }
@@ -37,8 +40,8 @@ try {
     // Check if branch tracks a remote (used by remote-tracking-gate, ~33ms savings)
     if (branch !== "main" && branch !== "master") {
       try {
-        input._git.tracking = cp.execSync("git config --get branch." + branch + ".remote", {
-          encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "pipe"]
+        input._git.tracking = cp.execFileSync("git", ["config", "--get", "branch." + branch + ".remote"], {
+          encoding: "utf-8", timeout: 3000, stdio: ["pipe", "pipe", "pipe"], windowsHide: true
         }).trim();
       } catch (e) {
         input._git.tracking = "";
