@@ -1,10 +1,8 @@
 # claude-code-skills — Pending Tasks
 
-## Marketplace Sync (from hook-runner T215)
+## Completed
+- [x] T001: Sync hook-runner v2.15.1 to plugins/hook-runner/ (done in hook-runner session, 36 files)
 
-- [ ] T001: Sync hook-runner v2.1.0 to plugins/hook-runner/
-  - Copy from ~/Documents/ProjectsCL1/hook-runner/: setup.js, report.js, load-modules.js, workflow.js, hook-log.js, run-async.js, watchdog.js, watchdog-config.json, package.json
-  - Copy run-*.js runners
-  - Copy modules/ directory
-  - Copy workflows/ directory
-  - Commit and push
+## Marketplace Sync
+- [x] T002: Sync hook-runner README.md to plugins/hook-runner/ (included in T003 sync)
+- [x] T003: Sync hook-runner v2.20.0 to marketplace — new modules (hook-system-reminder), fixes (cwd-drift-detector, worktree-gate), shtd.yml update, version bump
