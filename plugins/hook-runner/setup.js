@@ -767,6 +767,10 @@ function cmdHelp() {
   console.log("  --integrity     Full integrity scan (file drift + workflow compliance)");
   console.log("  --preflight     Enforcement status: active rules, never-fired gates, pipeline health");
   console.log("  --manifest      Generate ENFORCEMENT.md from live modules + hook log");
+  console.log("  --snapshot         Create SHA256 snapshot of current state");
+  console.log("  --snapshot drift   Detect drift from last snapshot (--json for machine output)");
+  console.log("  --snapshot backup  Copy files to git repo, commit, push");
+  console.log("  --snapshot restore Clone repo and copy files back into place");
   console.log("  --help, -h      Show this help");
   console.log("");
   console.log("Options:");
@@ -1162,7 +1166,9 @@ function cmdTest() {
   var testDir = path.join(REPO_DIR, "scripts", "test");
   var testFiles;
   try {
-    testFiles = fs.readdirSync(testDir).filter(function(f) { return f.indexOf("test-") === 0 && f.slice(-3) === ".sh"; }).sort();
+    testFiles = fs.readdirSync(testDir).filter(function(f) {
+      return f.indexOf("test-") === 0 && (f.slice(-3) === ".sh" || f.slice(-3) === ".js");
+    }).sort();
   } catch(e) {
     console.log("  ERROR: test directory not found: " + testDir);
     process.exit(1);
@@ -1189,11 +1195,13 @@ function cmdTest() {
   var totalPass = 0, totalFail = 0, suiteFail = 0, failedSuites = [];
   for (var ti = 0; ti < testFiles.length; ti++) {
     var testPath = path.join(testDir, testFiles[ti]);
-    var suiteName = testFiles[ti].replace("test-", "").replace(".sh", "");
+    var isJs = testFiles[ti].slice(-3) === ".js";
+    var suiteName = testFiles[ti].replace("test-", "").replace(/\.(sh|js)$/, "");
     console.log("");
     console.log("  [" + suiteName + "] " + testFiles[ti]);
     try {
-      var result = cp.execSync("bash " + JSON.stringify(testPath), {
+      var execCmd = isJs ? "node " + JSON.stringify(testPath) : "bash " + JSON.stringify(testPath);
+      var result = cp.execSync(execCmd, {
         cwd: REPO_DIR,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
@@ -1724,6 +1732,13 @@ function main() {
         args.indexOf("--json") !== -1 ? ["--json"] : []
       ), { stdio: "inherit", windowsHide: true });
     process.exit(mfResult.status || 0);
+  }
+  if (args.indexOf("--snapshot") !== -1) {
+    var snapArgs = args.slice(args.indexOf("--snapshot") + 1).filter(function(a) { return a.indexOf("--snapshot") === -1; });
+    var snapResult = require("child_process").spawnSync(process.execPath,
+      [path.join(__dirname, "snapshot.js")].concat(snapArgs.length ? snapArgs : ["create"]),
+      { stdio: "inherit", windowsHide: true });
+    process.exit(snapResult.status || 0);
   }
   if (args.indexOf("--health") !== -1) return cmdHealth();
   if (args.indexOf("--sync") !== -1) return cmdSync(dryRun);
