@@ -7,3 +7,7 @@
 - [x] T002: Sync hook-runner README.md to plugins/hook-runner/ (included in T003 sync)
 - [x] T003: Sync hook-runner v2.20.0 to marketplace — new modules (hook-system-reminder), fixes (cwd-drift-detector, worktree-gate), shtd.yml update, version bump
 - [x] T004: Sync hook-runner v2.26.0 to marketplace — PRs #351 + #352 (commit-counter branch awareness, hook-editing-gate expansion, publish-json-guard creation mode, openclaw-tmemu-guard, stop-message.txt sync, worktree-gate refactor)
+
+## Pending
+
+- [x] T005: Add missing plugins to README.md — hook-runner, cloud-claude, claude-report, jumpbox (PR #7)
