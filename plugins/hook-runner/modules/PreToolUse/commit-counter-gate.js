@@ -25,13 +25,17 @@ var FILE_MODIFY_PATTERNS = require("./_file-modify-patterns");
 function readCounter() {
   try {
     var data = JSON.parse(fs.readFileSync(COUNTER_FILE, "utf-8"));
-    return data.count || 0;
-  } catch(e) { return 0; }
+    return { count: data.count || 0, worktreeRequired: !!data.worktreeRequired };
+  } catch(e) { return { count: 0, worktreeRequired: false }; }
 }
 
-function writeCounter(count) {
+function writeCounter(count, worktreeRequired) {
   try {
-    fs.writeFileSync(COUNTER_FILE, JSON.stringify({ count: count, ts: new Date().toISOString() }));
+    fs.writeFileSync(COUNTER_FILE, JSON.stringify({
+      count: count,
+      ts: new Date().toISOString(),
+      worktreeRequired: !!worktreeRequired
+    }));
   } catch(e) {}
 }
 
@@ -39,31 +43,23 @@ function getProjectDir() {
   return process.env.CLAUDE_PROJECT_DIR || process.cwd();
 }
 
-function getGitDiffCount() {
+// T478: Combined into single `git status --porcelain` call (was 4 separate git spawns).
+// Returns { files: string[], diffCount: number }.
+function getGitStatus() {
   try {
     var opts = { encoding: "utf-8", timeout: 5000, windowsHide: true, cwd: getProjectDir() };
-    var out = cp.execFileSync("git", ["diff", "--stat"], opts).trim();
-    if (!out) return 0;
+    var out = cp.execFileSync("git", ["status", "--porcelain"], opts).trim();
+    if (!out) return { files: [], diffCount: 0 };
     var lines = out.split("\n");
-    // Last line is summary like "3 files changed, ..."
-    var summary = lines[lines.length - 1];
-    var match = summary.match(/(\d+)\s+file/);
-    return match ? parseInt(match[1], 10) : 0;
-  } catch(e) { return 0; }
-}
-
-// Get changed file paths (tracked modifications + untracked new files)
-function getChangedFiles() {
-  try {
-    var opts = { encoding: "utf-8", timeout: 5000, windowsHide: true, cwd: getProjectDir() };
-    var modified = cp.execFileSync("git", ["diff", "--name-only"], opts).trim();
-    var staged = cp.execFileSync("git", ["diff", "--name-only", "--cached"], opts).trim();
-    var untracked = cp.execFileSync("git", ["ls-files", "--others", "--exclude-standard"], opts).trim();
-    var all = (modified + "\n" + staged + "\n" + untracked).split("\n").filter(function(f) { return f.length > 0; });
-    // Deduplicate
     var seen = {};
-    return all.filter(function(f) { if (seen[f]) return false; seen[f] = true; return true; });
-  } catch(e) { return []; }
+    var files = [];
+    for (var i = 0; i < lines.length; i++) {
+      // porcelain format: XY filename (or XY old -> new for renames)
+      var f = lines[i].slice(3).trim().replace(/.* -> /, "");
+      if (f && !seen[f]) { seen[f] = true; files.push(f); }
+    }
+    return { files: files, diffCount: files.length };
+  } catch(e) { return { files: [], diffCount: 0 }; }
 }
 
 // Get current branch name
@@ -163,9 +159,21 @@ module.exports = function(input) {
     } catch(e) { cmd = (input.tool_input || {}).command || ""; }
   }
 
-  // Reset counter on git commit
+  // Reset counter on git commit — but block if worktree was required
+  // T485: Previously, Claude bypassed the worktree enforcement by just committing
+  // on the wrong branch. Now: if the gate flagged "worktree required", block commits too.
   if (input.tool_name === "Bash" && /git\s+commit/.test(cmd)) {
-    writeCounter(0);
+    var state = readCounter();
+    if (state.worktreeRequired && !isInWorktree()) {
+      return {
+        decision: "block",
+        reason: "COMMIT COUNTER — WORKTREE REQUIRED: Cannot commit on the main checkout.\n" +
+          "A previous check found files that need an isolated worktree.\n" +
+          "REQUIRED: Call EnterWorktree first, then commit in the worktree.\n" +
+          "This flag clears automatically once you're in a worktree."
+      };
+    }
+    writeCounter(0, false);
     return null;
   }
 
@@ -184,12 +192,14 @@ module.exports = function(input) {
 
   if (!isFileModify) return null;
 
-  var count = readCounter() + 1;
-  writeCounter(count);
+  var counterState = readCounter();
+  var count = counterState.count + 1;
+  writeCounter(count, counterState.worktreeRequired);
 
   if (count >= MAX_EDITS) {
-    // Cross-check with actual git diff
-    var gitCount = getGitDiffCount();
+    // T478: Single git call replaces 4 separate spawns
+    var status = getGitStatus();
+    var gitCount = status.diffCount;
     if (gitCount === 0) {
       // Counter drifted (files were reverted) — reset
       writeCounter(0);
@@ -197,7 +207,7 @@ module.exports = function(input) {
     }
 
     var branch = getBranch(input);
-    var files = getChangedFiles();
+    var files = status.files;
     var inWorktree = isInWorktree();
 
     // Check for branch-file mismatch
@@ -205,6 +215,8 @@ module.exports = function(input) {
 
     if (mismatch) {
       // WRONG BRANCH — changed files don't relate to this branch at all
+      // T485: Set worktreeRequired flag so git commit is also blocked
+      writeCounter(count, true);
       var topDirs = [];
       var seen = {};
       files.forEach(function(f) {
@@ -224,6 +236,8 @@ module.exports = function(input) {
 
     // Branch looks right (or we can't tell) but not in a worktree — enforce worktree
     if (!inWorktree) {
+      // T485: Set worktreeRequired flag so git commit is also blocked
+      writeCounter(count, true);
       return {
         decision: "block",
         reason: "COMMIT COUNTER: " + count + " file modifications since last commit (" + gitCount + " files changed in git).\n" +

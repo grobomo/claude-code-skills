@@ -116,8 +116,19 @@ function autoActivateShtd(projectDir) {
 
 function getGitBranch(gitRoot) {
   try {
+    var dotGit = path.join(gitRoot, ".git");
+    var headPath;
+    // T469: Handle worktrees — .git is a file containing "gitdir: /path/..."
+    var stat = fs.statSync(dotGit);
+    if (stat.isFile()) {
+      var gitdir = fs.readFileSync(dotGit, "utf-8").trim().replace(/^gitdir:\s*/, "");
+      if (!path.isAbsolute(gitdir)) gitdir = path.join(gitRoot, gitdir);
+      headPath = path.join(gitdir, "HEAD");
+    } else {
+      headPath = path.join(dotGit, "HEAD");
+    }
     // Read .git/HEAD directly — avoids spawning git (slow on Windows, can timeout)
-    var head = fs.readFileSync(path.join(gitRoot, ".git", "HEAD"), "utf-8").trim();
+    var head = fs.readFileSync(headPath, "utf-8").trim();
     // "ref: refs/heads/main" → "main", detached HEAD → "HEAD"
     if (head.indexOf("ref: refs/heads/") === 0) return head.slice(16);
     return "HEAD";
@@ -195,7 +206,7 @@ var BASH_ALLOW_PATTERNS = [
   /^\s*wc\b/, /^\s*diff\b/, /^\s*echo\b/, /^\s*printf\b/,
   /^\s*pwd\b/, /^\s*env\b/, /^\s*which\b/, /^\s*type\b/, /^\s*where\b/,
   /^\s*file\b/, /^\s*stat\b/, /^\s*du\b/, /^\s*df\b/,
-  /^\s*cd\b/, /^\s*readlink\b/, /^\s*realpath\b/,
+  /^\s*cd\b/, /^\s*readlink\b/, /^\s*realpath\b/, /^\s*wsl\b/,
   /^\s*jq\b/, /^\s*yq\b/, /^\s*sort\b/, /^\s*uniq\b/, /^\s*cut\b/, /^\s*tr\b/,
   /^\s*test\b/, /^\s*\[\s/, /^\s*true\b/, /^\s*false\b/,
   /^\s*date\b/, /^\s*hostname\b/, /^\s*whoami\b/, /^\s*id\b/,
@@ -204,6 +215,7 @@ var BASH_ALLOW_PATTERNS = [
   /^\s*bash\s+scripts\/test\//, // running existing test scripts
   /^\s*node\s+scripts\/test\//, // running JS test scripts
   /^\s*node\s+setup\.js\s+--test/, // hook-runner tests
+  /^\s*node\s+setup\.js\s+--(perf|stats|health|list|version|help|report|export|snapshot|xref)/, // T477+T486: hook-runner read-only commands
   /python\s+.*new.session\.py/, // T384: session management (launch new Claude tab)
   /python\s+.*context.reset\.py/, // T384: session management (backward-compat alias)
   /^\s*curl\s/, // HTTP requests (read-only, no local state change)
@@ -280,6 +292,19 @@ module.exports = function(input) {
   var roots = [];
   if (projectDir) roots.push(projectDir);
 
+  // T469: Also check CWD if it's a worktree of the same project.
+  // Worktrees have `.git` as a file (not directory) and live inside the project dir.
+  // Only add when both conditions are true to avoid contaminating test environments.
+  if (projectDir) {
+    var cwdRoot = findGitRoot(process.cwd());
+    if (cwdRoot && roots.indexOf(cwdRoot) === -1 &&
+        cwdRoot.replace(/\\/g, "/").indexOf(projectDir) === 0) {
+      try {
+        if (fs.statSync(path.join(cwdRoot, ".git")).isFile()) roots.push(cwdRoot);
+      } catch (e) { /* not a worktree, skip */ }
+    }
+  }
+
   if (!isBash && targetFile) {
     var fileGitRoot = findGitRoot(path.dirname(targetFile));
     if (fileGitRoot && roots.indexOf(fileGitRoot) === -1) roots.push(fileGitRoot);
@@ -292,12 +317,18 @@ module.exports = function(input) {
   }
 
   // Get current branch for feature matching (prefer shared context from runner)
+  // T469: Prefer non-main branch — worktree CWD may be on a feature branch
+  // while CLAUDE_PROJECT_DIR (main checkout) is on main.
   var branch = (input._git && input._git.branch) || "";
   if (!branch) {
+    var mainFallback = "";
     for (var bi = 0; bi < roots.length; bi++) {
-      branch = getGitBranch(roots[bi]);
-      if (branch) break;
+      var b = getGitBranch(roots[bi]);
+      if (!b) continue;
+      if (b !== "main" && b !== "master" && b !== "HEAD") { branch = b; break; }
+      if (!mainFallback) mainFallback = b;
     }
+    if (!branch) branch = mainFallback;
   }
   var featureWords = branchFeatureWords(branch);
   var taskId = branchTaskId(branch); // T321: e.g. "T319"
@@ -406,8 +437,38 @@ module.exports = function(input) {
     }
   }
   if (taskFoundIn === "TODO") {
-    // Task is in TODO.md, not in any spec — skip fuzzy spec matching
-    // (fuzzy could match the wrong spec and block on its completed tasks)
+    // Task is in TODO.md, not in any spec.
+    // T484: But if a spec dir fuzzy-matches the branch, enforce its chain.
+    // This prevents bypassing the spec pipeline by adding tasks to TODO.md
+    // when a matching spec directory already exists (even if incomplete).
+    if (featureWords.length > 0 && specEntries.length > 0) {
+      var todoFuzzyMatch = null;
+      var todoFuzzyScore = 0;
+      for (var tfi = 0; tfi < specEntries.length; tfi++) {
+        if (specEntries[tfi].score > todoFuzzyScore) {
+          todoFuzzyScore = specEntries[tfi].score;
+          todoFuzzyMatch = specEntries[tfi];
+        }
+      }
+      if (todoFuzzyMatch && todoFuzzyScore >= 1) {
+        // Matching spec dir exists — enforce structural chain (spec.md → tasks.md).
+        // Only block on INCOMPLETE chain (missing tasks.md). If tasks.md exists
+        // (even with all tasks done), the spec is structurally complete and the
+        // TODO.md task is likely separate work — allow it.
+        if (todoFuzzyMatch.hasSpec && !todoFuzzyMatch.hasTasks) {
+          return {
+            decision: "block",
+            reason: "SPEC GATE: specs/" + todoFuzzyMatch.dir + "/tasks.md missing.\n" +
+              "WHY: " + taskId + " is in TODO.md, but specs/" + todoFuzzyMatch.dir + "/ also matches your branch.\n" +
+              "The SHTD pipeline requires: spec.md → tasks.md → code. Complete the spec chain.\n" +
+              "FIX: Create tasks with /speckit.tasks from specs/" + todoFuzzyMatch.dir + "/spec.md" +
+              SPEC_BEFORE_CODE + CROSS_PROJECT_HINT + "\n" +
+              "Blocked: " + (isBash ? "Bash: " + (cmd || "").substring(0, 80) : path.basename(targetFile))
+          };
+        }
+      }
+    }
+    // No fuzzy match or no spec dirs — TODO.md alone is sufficient
     if (isTestFile) return null;
     return null;
   }
