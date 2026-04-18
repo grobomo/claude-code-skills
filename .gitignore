@@ -10,3 +10,5 @@ registries/
 *.tmp
 plugins/hook-runner/workflows/archive_nested_dup/
 archive/
+SESSION_STATE.md
+.workflow-state.json
