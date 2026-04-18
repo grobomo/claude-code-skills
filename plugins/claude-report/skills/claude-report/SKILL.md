@@ -1,5 +1,4 @@
 ---
-
 name: claude-report
 description: Generate inventory reports for MCP servers, skills, and hooks
 keywords:

@@ -1,3 +1,15 @@
+---
+name: jumpbox
+description: Windows EC2 jumpbox manager. Provisions Win Server 2022 with Chrome, Git Bash, SSM. RDP with auto credential injection.
+keywords:
+  - aws
+  - ec2
+  - rdp
+  - windows
+  - jumpbox
+  - ssm
+---
+
 # Jumpbox
 
 Manage persistent Windows EC2 test jumpboxes. Config-driven (no hardcoded IDs). Handles RDP credential injection, self-signed cert trust, and auto-dismissal of publisher warnings.
