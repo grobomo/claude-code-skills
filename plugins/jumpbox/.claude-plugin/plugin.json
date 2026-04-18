@@ -1,0 +1,19 @@
+{
+  "name": "jumpbox",
+  "description": "Windows EC2 jumpbox manager. Provisions Win Server 2022 with Chrome, Git Bash, SSM. RDP with auto credential injection.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "aws",
+    "ec2",
+    "rdp",
+    "windows",
+    "jumpbox",
+    "ssm"
+  ],
+  "skills": [
+    "./skills/jumpbox"
+  ]
+}
