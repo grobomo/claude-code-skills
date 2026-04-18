@@ -2,6 +2,65 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.32.0] — 2026-04-18
+
+### Added
+- **Inter-project TODO priority system** (T486) — When Project A writes a TODO to Project B, it signals real-world feedback requiring P0 attention. Three new modules:
+  - `PostToolUse/inter-project-audit.js` — Logs inter-project TODO writes to `~/.claude/audit/inter-project-todo.jsonl`
+  - `SessionStart/inter-project-priority.js` — Surfaces XREF-tagged items as P0 at session start
+  - `PreToolUse/inter-project-priority-gate.js` — Blocks non-XREF work when XREF items pending (allows branch matching XREF task ID)
+- **`setup.js --xref`** (T486) — CLI dashboard showing audit log + pending XREF items across all projects
+- **XREF tag format**: `<!-- XREF:source-project:task-id YYYY-MM-DD -->` in TODO.md lines
+- **spec-gate**: Added `--xref` to bash allowlist. 15-test suite for T486.
+
+## [2.31.0] — 2026-04-18
+
+### Fixed
+- **spec-gate TODO.md bypass** (T484) — When task ID exists in TODO.md AND a fuzzy-matching spec dir has `spec.md` but no `tasks.md`, gate now blocks. Prevents bypassing SHTD pipeline by adding tasks to TODO.md when an incomplete spec exists. Completed specs unaffected. 6-test suite.
+- **commit-counter-gate worktree bypass** (T485) — Wrong-branch and not-in-worktree blocks now set a `worktreeRequired` flag that also blocks `git commit` until session enters a worktree. Previously Claude could bypass by committing on the wrong branch. 5 new tests (17 total).
+
+## [2.30.0] — 2026-04-18
+
+### Improved
+- **Test suite timeouts** (T482) — Per-test timeouts (60s JS, 60s bash) replace single 360s global timeout. Timeouts reported as `TIMEOUT` (not `FAIL`) and don't cause exit(1). New flags: `--js-only`, `--sh-only`, `--skip-wsl`, `--timeout <sec>`. Per-suite and total elapsed times shown. 17-test suite.
+
+## [2.29.0] — 2026-04-18
+
+### Fixed
+- **OpenClaw E2E tsx harness** (T475) — Rewrote harness to use real OpenClaw Plugin SDK `register(api)` + `api.on("before_tool_call")` pattern instead of incorrect `plugin.hooks.before_tool_call()`. Uses `NODE_PATH` to resolve SDK from WSL global install. 16/16 gate tests via tsx.
+- **CHANGELOG accuracy** (T479) — v2.27.0 T475 test count corrected 30→31. v2.28.0 added missing commit-counter-gate optimization and TOOLS tag entries.
+
+### Maintenance
+- **Stale branch cleanup** (T480) — Deleted 6 merged remote branches (237-bookkeeping, 253-T001, 253-T009, 350-T460, feat/event/T001, worktree-T462).
+
+## [2.28.0] — 2026-04-17
+
+### Fixed
+- **Worktree branch detection** (T477) — `run-pretooluse.js` shared context always read branch from `CLAUDE_PROJECT_DIR` (main checkout = "main"), causing spec-gate to block commands in worktree sessions. Now reads CWD `.git` first via `readBranchFromDir` with worktree gitdir support. 5-test suite.
+- **Spec-gate bash allowlist** (T477) — Added 9 read-only `setup.js` flags (`--perf`, `--stats`, `--health`, `--list`, `--version`, `--help`, `--report`, `--export`, `--snapshot`). 4 new tests (23 total).
+
+### Performance
+- **preserve-iterated-content cache** (T478) — File-based cache for `git rev-list --count` results. First call: 1122ms, cache hit: 7ms (160x faster). Cache keyed by HEAD SHA + file path with 1hr TTL. Worktree HEAD resolution via `commondir`.
+- **commit-counter-gate optimization** (T478) — Replaced 4 git subprocess spawns with single `git status --porcelain`. 12/12 tests.
+- **TOOLS tags on 7 modules** (T478) — Added tool-specific `// TOOLS:` tags to 7 modules that already checked `tool_name` internally. Read/Grep/Glob calls now load 28 modules instead of 35.
+
+### Maintenance
+- **Stale branch cleanup** (T460) — Deleted 17 merged remote branches + 3 stale local worktree branches.
+
+## [2.27.0] — 2026-04-17
+
+### Added
+- **OpenClaw Plugin SDK integration** (T470-T476) — Ported 3 pilot gate modules (force-push, secret-scan, commit-quality) to OpenClaw's Plugin SDK as `openclaw-plugin/`. Install script, `definePluginEntry` + `before_tool_call` hook, configurable per-module enable/disable.
+- **OpenClaw module mapping** (T472) — Mapped all 94 hook-runner modules to OpenClaw equivalents. 42 directly portable, 24 adaptable, 28 Claude Code-specific. See `docs/T472-openclaw-mapping.md`.
+- **OpenClaw E2E test suite** (T475) — 31-test suite across 3 phases: plugin load verification (3), tsx gate tests with real SDK (16), cross-validation with hook-runner originals (11). Harness uses `register(api)` + `api.on("before_tool_call")` pattern matching OpenClaw runtime.
+- **openclaw-tmemu-guard** (T468) — Project-scoped PreToolUse module preventing modification of production OpenClaw instance. Allows test profiles. 13/13 tests.
+- **Worktree-aware gates** (T469) — spec-gate, branch-pr-gate, and worktree-gate now detect git worktrees via `.git` file gitdir reference. 8 new tests.
+- **Commit counter branch awareness** (T466) — Branch-file mismatch detection + worktree enforcement. 12-test suite.
+
+### Fixed
+- **publish-json-guard** (T468) — Now allows creation of `.github/publish.json` (not just edits).
+- **install.sh path** (T474) — Uses `extensions/` instead of `plugins/` to match OpenClaw discovery.
+
 ## [2.26.0] — 2026-04-16
 
 ### Added
