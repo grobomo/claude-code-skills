@@ -1,0 +1,19 @@
+{
+  "name": "openclaw",
+  "description": "Talk to local OpenClaw instances via HTTP API. OpenAI-compatible chat completions endpoint running in WSL.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "openclaw",
+    "llm",
+    "chat",
+    "wsl",
+    "openai-compatible",
+    "api"
+  ],
+  "skills": [
+    "./skills/openclaw"
+  ]
+}

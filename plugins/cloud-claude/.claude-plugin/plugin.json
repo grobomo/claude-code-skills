@@ -1,0 +1,20 @@
+{
+  "name": "cloud-claude",
+  "description": "Launch Claude Code on AWS EC2 spot instances. Auto-provisions SSH keys, security groups, Docker container with Chrome and MCP support.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "aws",
+    "ec2",
+    "spot",
+    "docker",
+    "cloud",
+    "remote",
+    "ssh"
+  ],
+  "skills": [
+    "./skills/cloud-claude"
+  ]
+}

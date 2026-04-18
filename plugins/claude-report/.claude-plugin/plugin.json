@@ -1,0 +1,19 @@
+{
+  "name": "claude-report",
+  "description": "Generate inventory reports for MCP servers, skills, and hooks. HTML output with search and filtering.",
+  "version": "1.0.0",
+  "author": {
+    "name": "grobomo"
+  },
+  "keywords": [
+    "report",
+    "inventory",
+    "mcp",
+    "skills",
+    "hooks",
+    "html"
+  ],
+  "skills": [
+    "./skills/claude-report"
+  ]
+}

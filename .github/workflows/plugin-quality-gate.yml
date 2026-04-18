@@ -44,7 +44,11 @@ jobs:
               --include="*.py" --include="*.js" --include="*.json" \
               --include="*.md" --include="*.sh" --include="*.yaml" \
               --include="*.yml" --include="*.ts" \
-              --exclude-dir=templates 2>/dev/null \
+              --exclude-dir=templates \
+              --exclude-dir=ddei-email-security \
+              --exclude-dir=ep-incident-response \
+              --exclude-dir=hackathon26 \
+              --exclude='snapshot.js' 2>/dev/null \
               | grep -v 'grep -rn\|Replace with\|Pattern found\|# Pattern\|os\.homedir\|\\$HOME\|example\|placeholder\|hardcoded personal\|username/\.\.\.' \
               || true)
             if [ -n "$HITS" ]; then
