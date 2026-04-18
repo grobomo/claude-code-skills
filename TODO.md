@@ -10,4 +10,4 @@
 
 ## Pending
 
-- [ ] T005: Add missing plugins to README.md — hook-runner, cloud-claude, claude-report, jumpbox are in plugins/ but not listed in the README table
+- [x] T005: Add missing plugins to README.md — hook-runner, cloud-claude, claude-report, jumpbox (PR #7)
