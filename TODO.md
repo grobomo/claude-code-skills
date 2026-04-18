@@ -13,3 +13,4 @@
 - [x] T005: Add missing plugins to README.md — hook-runner, cloud-claude, claude-report, jumpbox (PR #7)
 - [x] T006: Sync hook-runner v2.32.0 to marketplace — v2.26.0 → v2.32.0 (PR #8)
 - [x] T007: Publish openclaw skill to marketplace (PR #9)
+- [ ] T008: Fix README table — squash merges lost plugin entries for hook-runner, cloud-claude, claude-report, jumpbox, openclaw
