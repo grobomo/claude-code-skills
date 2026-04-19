@@ -21,5 +21,5 @@
 - [x] T013: Clean up leftover SKILL.md.bak.archive from openclaw plugin (PR #14)
 - [x] T014: Audit plugin versions (PR #15) — mcp-manager stale (v1.1.0), all others current or in-place
 - [ ] T015: Sync mcp-manager to marketplace — blocked: source at broken junction (MCP/mcp-manager). Need user to identify source repo.
-- [ ] T016: Validate plugin install flow — test `claude plugin install` for 2-3 plugins end-to-end
+- [x] T016: Fix instruction-manager plugin.json + add validation test script (PR #16)
 - [ ] T017: Add CONTRIBUTING.md — document plugin structure, CI requirements, sync workflows for contributors
