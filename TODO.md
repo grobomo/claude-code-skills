@@ -18,4 +18,8 @@
 - [x] T010: Add .gitignore entries for SESSION_STATE.md and .workflow-state.json (PR #11)
 - [x] T011: Add plugin.json for 5 plugins + fix CI failures (PR #12) — root cause fix for README table loss
 - [x] T012: Sync hook-runner v2.54.0 to marketplace — v2.32.0 → v2.54.0 (PR #13, 64 files, 1589+/338-)
-- [ ] T013: Clean up leftover SKILL.md.bak.archive from openclaw plugin
+- [x] T013: Clean up leftover SKILL.md.bak.archive from openclaw plugin (PR #14)
+- [ ] T014: Audit plugin versions — check which plugins have stale marketplace versions vs source repos
+  - Finding: mcp-manager v1.1.0 → v1.23.0 (source at _grobomo/ccc-manager) — 22 versions behind
+  - All other plugins are developed in-place or have no separate source repo
+- [ ] T015: Sync mcp-manager to marketplace — source location unclear. ccc-manager is a different project (fleet manager). MCP/mcp-manager path in .mcp.json is a broken junction. Need user to identify source repo.
