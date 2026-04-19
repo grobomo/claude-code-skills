@@ -18,7 +18,7 @@ hook-runner replaces direct `settings.json` editing. After install, you never to
 
 **1. Modules over shell commands.** Each rule is a `.js` file that receives structured input (tool name, file path, command) and returns a decision. Modules are testable, documented, and version-controlled. Drop a file in a folder and it runs — remove it and it stops.
 
-**2. Workflows over individual modules.** You don't think "I need to enable spec-gate, branch-gate, test-checkpoint-gate, and worker-loop." You think "I want the SHTD development pipeline." Workflows group related modules so you enable one name and get a complete enforcement regime. Disable it and they all go silent. This is how you manage 80+ modules without losing track.
+**2. Workflows over individual modules.** You don't think "I need to enable spec-gate, branch-gate, test-checkpoint-gate, and worker-loop." You think "I want the SHTD development pipeline." Workflows group related modules so you enable one name and get a complete enforcement regime. Disable it and they all go silent. This is how you manage 115+ modules without losing track.
 
 **3. Portability.** Export your module config as YAML (`--export`), sync it to another machine (`--sync`), or share a workflow definition. Workflows also make it easy to switch contexts — enable `customer-data-guard` during incident response, disable it after.
 
@@ -51,14 +51,20 @@ The setup wizard will:
 1. Scan your current hooks and generate a styled HTML report
 2. Back up existing hooks to `~/.claude/hooks/archive/`
 3. Install the runner system
-4. Enable the `starter` workflow (with `--yes`) — 11 universally useful modules
+4. Enable the `starter` workflow (with `--yes`) — 42 universally useful modules
 
 Ready for more? Enable the full development pipeline:
 ```bash
-node setup.js --workflow enable shtd    # 90 modules: spec-first, test-first, PR discipline
+node setup.js --workflow enable shtd    # 101 modules: spec-first, test-first, PR discipline
 ```
 
 To undo everything: `node setup.js --uninstall --confirm`
+
+**Want to see it in action first?** Run the interactive demo — no install needed:
+```bash
+npx grobomo/hook-runner --demo          # terminal demo
+npx grobomo/hook-runner --demo-html     # shareable HTML page
+```
 
 ## What does a block look like?
 
@@ -84,7 +90,7 @@ Claude reads the block message and adjusts its approach — no user intervention
 
 ## Workflows
 
-Workflows are the primary abstraction. Instead of managing 80+ individual modules, you enable a workflow and its modules activate automatically.
+Workflows are the primary abstraction. Instead of managing 115+ individual modules, you enable a workflow and its modules activate automatically.
 
 ```bash
 node setup.js --workflow list              # see available workflows
@@ -98,8 +104,9 @@ node setup.js --workflow query Edit        # which workflows affect Edit?
 
 | Workflow | Modules | What it enforces |
 |----------|---------|-----------------|
-| `starter` | 11 | **Start here.** Safe defaults for any user — blocks force-push, destructive git, secret commits, file deletion. Adds commit quality checks, test reminders, and session context. |
-| `shtd` | 90 | Spec-Hook-Test-Driven — the full development pipeline. Enforces spec → branch → test → implement → PR, plus code quality, infrastructure safety, messaging guards, session lifecycle, and self-improvement. |
+| `starter` | 42 | **Start here.** Safe defaults for any user — blocks force-push, destructive git, secret commits, file deletion. Adds commit quality checks, test reminders, and session context. |
+| `shtd` | 101 | Spec-Hook-Test-Driven — the full development pipeline. Enforces spec → branch → test → implement → PR, plus code quality, infrastructure safety, messaging guards, session lifecycle, and self-improvement. |
+| `gsd` | 101 | GSD-driven development — replaces shtd's spec-based flow with phase-based flow (.planning/ → ROADMAP.md → phase plan → branch → execute → PR). Same safety and quality modules as shtd. |
 | `customer-data-guard` | 3 | Read-only incident response — blocks env changes, data exfil, and V1 modifications. |
 | `dispatcher-worker` | 3 | Role-aware fleet workflow. Dispatcher specs/distributes, workers implement/test/PR. |
 | `no-local-docker` | 1 | Blocks local Docker commands, forces remote infrastructure. |
@@ -298,7 +305,9 @@ node setup.js --integrity [--json]     # verify live modules match repo
 node setup.js --report --analyze       # heuristic quality analysis
 node setup.js --prune [N]             # prune log entries older than N days
 
-# Development
+# Demo & Development
+node setup.js --demo [--fast]          # interactive demo (no install needed)
+node setup.js --demo-html              # generate standalone HTML demo page
 node setup.js --test-module <file> [--input <json>]  # test one module
 node setup.js --test                   # run all test suites
 node setup.js --version                # show version
@@ -348,10 +357,12 @@ Full catalog in `modules/` directory:
 | `deploy-gate` | Blocks deploy commands when git tree is dirty |
 | `deploy-history-reminder` | Shows last 5 commits before deploy — prevents repeating failed approaches |
 | `disk-space-guard` | Blocks destructive commands after disk space errors |
+| `e2e-self-report-gate` | Alias → `test-checkpoint-gate` (legacy name) |
 | `enforcement-gate` | Requires git repo + TODO.md before edits |
 | `env-var-check` | Blocks edits if required env vars missing |
 | `force-push-gate` | Blocks git push --force to main/master |
 | `gh-auto-gate` | Forces gh_auto wrapper for all gh/git push commands (EMU account safety) |
+| `gsd-gate` | Alias → `test-checkpoint-gate` (legacy name) |
 | `gsd-branch-gate` | Enforces GSD branch naming (seq-phase-N-slug) for new branches |
 | `gsd-plan-gate` | Blocks code edits without a phase plan in GSD workflow |
 | `gsd-pr-gate` | Validates PR creation follows GSD conventions |
@@ -371,6 +382,7 @@ Full catalog in `modules/` directory:
 | `no-passive-rules` | Blocks .md rules when a hook module is better |
 | `no-rules-gate` | Blocks creation of ~/.claude/rules/ files (use hook modules instead) |
 | `hook-system-reminder` | Reminds Claude that enforcement is ONLY via hook-runner modules |
+| `inter-project-priority-gate` | Blocks non-XREF work when P0 inter-project TODOs are pending |
 | `pr-first-gate` | Blocks spec/code edits on branches without an open PR |
 | `pr-per-task-gate` | Requires task ID in PR titles |
 | `preserve-iterated-content` | Warns on full-file rewrites of iterated files |
@@ -415,6 +427,7 @@ Full catalog in `modules/` directory:
 | `troubleshoot-detector` | Detects fail-fail-succeed patterns |
 | `update-stale-docs` | Detects stale docs after code edits |
 | `empty-output-detector` | Warns when ls/cat/find/curl/kubectl/az return empty output |
+| `inter-project-audit` | Logs inter-project TODO writes to JSONL audit trail |
 | `result-review-gate` | Injects review checklist when reading report/PDF/coverage files |
 
 ### UserPromptSubmit (processes user prompts)
@@ -461,6 +474,7 @@ Full catalog in `modules/` directory:
 | `session-cleanup` | Sweeps orphaned session-scoped temp files from crashed sessions |
 | `session-collision-detector` | Warns if another Claude Code session is active on the same project |
 | `terminal-title` | Sets terminal title to project folder name |
+| `inter-project-priority` | Injects P0 inter-project TODOs (XREF tags) at session start |
 | `workflow-summary` | Injects active workflow summary |
 
 ## Troubleshooting

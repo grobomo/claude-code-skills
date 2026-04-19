@@ -1,3 +1,4 @@
+// TOOLS: Bash, Edit, Write
 // WORKFLOW: shtd
 // WHY: Claude implemented features that nobody asked for, wasting hours.
 // T321: Strengthened — if branch has TXXX, that specific task must be unchecked.
@@ -215,7 +216,7 @@ var BASH_ALLOW_PATTERNS = [
   /^\s*bash\s+scripts\/test\//, // running existing test scripts
   /^\s*node\s+scripts\/test\//, // running JS test scripts
   /^\s*node\s+setup\.js\s+--test/, // hook-runner tests
-  /^\s*node\s+setup\.js\s+--(perf|stats|health|list|version|help|report|export|snapshot|xref)/, // T477+T486: hook-runner read-only commands
+  /^\s*node\s+setup\.js\s+--(perf|stats|health|list|version|help|report|export|snapshot|xref|sync|upgrade|audit-project|manifest|analyze|workflow)/, // T477+T486+T488+T495: hook-runner operational commands
   /python\s+.*new.session\.py/, // T384: session management (launch new Claude tab)
   /python\s+.*context.reset\.py/, // T384: session management (backward-compat alias)
   /^\s*curl\s/, // HTTP requests (read-only, no local state change)

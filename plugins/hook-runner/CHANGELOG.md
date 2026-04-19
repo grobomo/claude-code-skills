@@ -2,6 +2,152 @@
 
 All notable changes to hook-runner are documented here.
 
+## [2.54.0] — 2026-04-19
+
+### Added
+- **`--demo-html` in docs** (T536) — README, CLAUDE.md, and SKILL.md now document the `--demo-html` command alongside the existing `--demo` entry.
+- **Demo HTML test coverage** (T537) — 12 new checks in `test-T519-demo.sh` verify HTML generation, content structure (DOCTYPE, title, scenarios, badges, block reasons, workflows, footer), and `--demo-html` routing through `setup.js`. Total demo tests: 26/26.
+- **SKILL.md sync** (T537) — Local skill copy updated with gsd workflow, demo commands, correct module counts, and `--demo-html`.
+
+## [2.53.0] — 2026-04-19
+
+### Added
+- **Static HTML demo export** (T534) — `node demo.js --html` generates a standalone HTML page with the same 6 scenarios as the terminal demo. Dark GitHub-style theme with stat cards, scenario results, block reasons, workflow overview, and getting started section. Also accessible via `node setup.js --demo-html`. Shareable via email/Slack without requiring `npx`.
+
+## [2.52.0] — 2026-04-19
+
+### Fixed
+- **isInWorktree() false negative** (T532) — `commit-counter-gate` failed to detect worktree sessions when `CLAUDE_PROJECT_DIR` pointed to the main checkout (.git = directory). The function now falls through to check CWD's .git, which is a file in worktrees. Eliminates stale `worktreeRequired` flags that blocked commits/edits in worktree sessions. Updated 3 tests to match.
+
+## [2.51.0] — 2026-04-19
+
+### Performance
+- **secret-scan-gate fast path** (T530) — Added `--name-only` pre-check before expensive `git diff --cached`. When all staged files are safe extensions (.md, .yml, .txt, etc.), skips the full diff entirely. Reduces 200–1416ms spikes to ~5ms on metadata-only commits.
+- **workflow-compliance-gate cache** (T530) — Replaced `require(workflow.js)` + `require(hook-log.js)` with direct JSON file reads + file-based cache with mtime key. hook-log.js only loaded on block/exception (rare), not the common pass path. Saves ~14ms per tool call across 936+ calls/session.
+
+## [2.50.0] — 2026-04-18
+
+### Added
+- **GitHub release automation** (T527) — New `.github/workflows/release.yml` creates a GitHub release with CHANGELOG excerpt whenever a version tag (`v*`) is pushed. Releases appear on the repo sidebar with full release notes.
+- **gsd workflow in demo** (T526) — Demo summary now shows the `gsd` workflow alongside `starter` and `shtd`.
+
+## [2.49.0] — 2026-04-18
+
+### Fixed
+- **Missing gsd workflow in docs** (T524) — `gsd` (101 modules, phase-driven development) was defined in `workflows/gsd.yml` but missing from README Built-in Workflows table and SKILL.md keywords/listing.
+
+## [2.48.0] — 2026-04-18
+
+### Fixed
+- **npx --demo broken** (T523) — `demo.js` was missing from package.json `files` array, so `npx grobomo/hook-runner --demo` would fail.
+- **Stale SKILL.md** (T522) — Updated module counts (starter 11→42, shtd 90→101), added demo custom_command.
+- **README --demo** (T521) — Added demo callout to Quick Start and CLI Reference sections.
+
+## [2.47.0] — 2026-04-18
+
+### Added
+- **Interactive demo command** (T519) — `node setup.js --demo` showcases hook-runner without a live Claude Code session. Simulates 6 scenarios using real modules (force push, destructive git, rm -rf, vague commits, normal ops). ANSI color output, `--fast` flag. Also runnable standalone via `node demo.js`.
+
+## [2.46.0] — 2026-04-18
+
+### Improved
+- **Workflow audit extends-aware** (T517) — Audit now counts parent workflow tags toward child workflows (gsd/shtd extend starter). Added drift-check to shtd/gsd YAMLs, alias modules to gsd.yml, fixed config-sync tag. All 7 workflows now show OK. Updated README counts: starter 42, shtd 101.
+
+## [2.45.0] — 2026-04-18
+
+### Fixed
+- **Workflow YAML ↔ tag sync** (T515) — Added 5 modules missing from workflow YAMLs (inter-project-priority-gate, inter-project-audit, inter-project-priority, gsd-gate, e2e-self-report-gate). Fixed auto-continue and never-give-up tags from `starter` to `shtd, gsd, starter`. Workflow audit now clean for shtd (100) and starter (42).
+
+## [2.44.0] — 2026-04-18
+
+### Fixed
+- **README module counts** (T513) — Updated stale workflow module counts: starter 11→40, shtd 90→95, total 80+→115+.
+
+## [2.43.0] — 2026-04-18
+
+### Fixed
+- **commit-counter-gate worktree detection** (T511) — `isInWorktree()` and `getBranch()` only checked `CLAUDE_PROJECT_DIR`, which doesn't update when `EnterWorktree` switches the CWD. Now falls back to CWD when `CLAUDE_PROJECT_DIR` has no `.git`, fixing the stuck `worktreeRequired` flag.
+
+## [2.42.0] — 2026-04-18
+
+### Improved
+- **TOOLS tag coverage** (T509) — Added `// TOOLS:` tags to 11 modules (1 PreToolUse, 10 PostToolUse) that were loading on every tool call. Modules now skip loading when the current tool doesn't match, saving ~5ms per skip. Only 4 modules intentionally remain untagged (they inspect all tools).
+
+## [2.41.0] — 2026-04-18
+
+### Added
+- **Per-file test timeout** (T507) — Test files can now declare `// TIMEOUT: N` (seconds) in their first 5 lines to override the default 60s timeout. Applied to `test-commit-counter-gate.js` (90s) which needs extra time for git repo creation on Windows.
+
+## [2.40.0] — 2026-04-18
+
+### Fixed
+- **Stale sync entries** (T504) — `gsd-gate` and `e2e-self-report-gate` were renamed to `test-checkpoint-gate` but still referenced in `modules.yaml`. Created alias modules that delegate to the real implementation. `--sync` now completes with 0 errors.
+- **README module count** (T505) — Added alias module entries to README PreToolUse table. Fixes T094-module-docs test failure.
+
+## [2.39.0] — 2026-04-18
+
+### Added
+- **OpenClaw plugin — auto-continue + session-start-reminder** (T502) — Ported two modules to the OpenClaw plugin: `auto-continue` injects a stop message forcing Claude to continue working instead of stopping, `session-start-reminder` injects session instructions at plugin startup. Includes `stop-message.txt` for customizable stop prompt.
+
+## [2.38.0] — 2026-04-18
+
+### Added
+- **`--audit-project --json`** (T500) — Machine-readable JSON output for `--audit-project`. Includes events, blocks with samples, coverage gaps, timing, and summary. Enables programmatic consumption by scripts and dashboards.
+
+### Improved
+- **SessionStart perf** (T499) — Replaced Windows `tasklist` (~200ms/call) with `process.kill(pid, 0)` (<1ms) in `_is-pid-running`. Replaced `require()` module validation with `fs.accessSync()` in `project-health`. Net: session-cleanup 374ms→14ms, project-health 358ms→45ms (~670ms saved per session start).
+
+## [2.37.0] — 2026-04-18
+
+### Added
+- **`--audit-project` CLI** (T494) — Per-project hook audit from hook-log.jsonl. Shows fired modules, blocks with samples, coverage gaps, timing analysis with spike detection, and a verdict. Usage: `node setup.js --audit-project <name>`
+
+### Fixed
+- **spec-gate allowlist** (T495) — Added `--audit-project`, `--manifest`, `--analyze`, `--workflow` to Bash allowlist. These read-only/operational commands were blocked on main branch.
+- **preserve-iterated-content cache** (T496) — Cache was keyed by `headSha:filePath`, invalidating all entries on every commit. Switched to path-only keys with 5-minute TTL. Cache hit: 663ms → 4ms. Removed unused `getHeadSha`/`findGitRoot` functions.
+- **commit-counter-gate metadata dirs** (T497) — Metadata directories (`.claude`, `.coconut`, `.github`, `.planning`, `.vscode`, `specs`, `node_modules`) excluded from branch-file mismatch detection. Prevents false "WRONG BRANCH" blocks in worktrees.
+- **2 pre-existing test failures** (T492) — T112 why-gate WORKFLOW tag check, T094 module-docs missing 3 T486 modules in README.
+- **no-nested-claude false positive** (T490) — Chained `cd && git commit` with "claude" in heredoc was blocked.
+
+### Improved
+- **test-modules.sh → JS** (T493) — Converted shell-based module tests to pure JS. Eliminates ~218 node process spawns, fixes 60s timeout. 436 tests in <5s (was 45s+).
+
+## [2.36.0] — 2026-04-18
+
+### Improved
+- **TOOLS tag optimization batch 2** (T491) — Added `// TOOLS:` tags to 6 untagged PreToolUse modules, reducing overhead on Read/Grep/Glob calls:
+  - `spec-gate` → `Bash, Edit, Write` (12ms avg saved per non-matching call)
+  - `gsd-plan-gate` → `Bash, Edit, Write` (8ms avg saved)
+  - `env-var-check` → `Bash, Edit, Write`
+  - `no-nested-claude` → `Bash`
+  - `publish-json-guard` → `Bash, Edit, Write`
+  - `pr-first-gate` → `Bash, Edit, Write`
+- Combined with T488 (batch 1), 56 of 61 PreToolUse modules now have TOOLS tags
+
+## [2.35.0] — 2026-04-18
+
+### Added
+- **OpenClaw plugin v0.3.0** (T489) — Batch-ported 7 universal modules. Total: 25 modules.
+  - **before_tool_call (4 new)**: `no-nested-claude`, `disk-space-guard`, `no-unnecessary-sleep`, `claude-p-pattern`
+  - **after_tool_call (3 new)**: `empty-output-detector`, `disk-space-detect`, `troubleshoot-detector`
+- After-call gates now receive tool result for output-aware checks (empty output, disk errors, troubleshooting cycles)
+- 43-test suite for T489 batch port. Total OpenClaw tests: 116.
+
+## [2.34.0] — 2026-04-18
+
+### Improved
+- **TOOLS tag optimization** (T488) — Added `// TOOLS:` tags to 19 PreToolUse modules that were loading unnecessarily. Reduces per-tool-call module count: Bash 57→40 (-30%), Read 30→11 (-63%), Write ~36→31 (-14%). Estimated ~200ms saved per Bash call, ~100ms per Read call.
+- **spec-gate allowlist** (T488) — Added `--sync` and `--upgrade` to allowed commands on main branch. These are operational maintenance commands that don't require a feature branch. 25-test suite updated.
+
+## [2.33.0] — 2026-04-18
+
+### Added
+- **OpenClaw plugin v0.2.0** (T487) — Batch-ported 15 modules beyond the 3 T473 pilots. Total: 18 modules.
+  - **before_tool_call (10 new)**: `git-destructive-guard`, `archive-not-delete`, `git-rebase-safety`, `no-hardcoded-paths`, `victory-declaration-gate`, `root-cause-gate`, `no-fragile-heuristics`, `no-focus-steal`, `crlf-ssh-key-check`, `unresolved-issues-gate`
+  - **after_tool_call (5 new)**: `commit-msg-check`, `crlf-detector`, `test-coverage-check`, `result-review-gate`, `rule-hygiene`
+- All modules individually configurable via `openclaw.plugin.json` modules map
+- 49-test suite for T487. Updated T472 mapping doc with ported status.
+
 ## [2.32.0] — 2026-04-18
 
 ### Added
