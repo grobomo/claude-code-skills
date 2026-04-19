@@ -134,13 +134,15 @@ jobs:
               continue
             fi
 
-            # Check required fields
+            # Check required fields (including author.name)
             MISSING=$(python3 << PYEOF
           import json, sys
           with open("$pj") as f:
               data = json.load(f)
           required = ["name", "version", "description"]
           missing = [k for k in required if k not in data]
+          if not data.get("author", {}).get("name"):
+              missing.append("author.name")
           if missing:
               print(", ".join(missing))
           PYEOF
