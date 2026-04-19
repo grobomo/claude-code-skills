@@ -16,4 +16,6 @@
 - [x] T008: Fix README table — squash merges lost plugin entries (PR #10)
 - [x] T009: Add secret-scan.yml CI workflow (PR #11)
 - [x] T010: Add .gitignore entries for SESSION_STATE.md and .workflow-state.json (PR #11)
-- [ ] T011: Add plugin.json for 5 plugins missing it — root cause of README table disappearing
+- [x] T011: Add plugin.json for 5 plugins + fix CI failures (PR #12) — root cause fix for README table loss
+- [x] T012: Sync hook-runner v2.54.0 to marketplace — v2.32.0 → v2.54.0 (PR #13, 64 files, 1589+/338-)
+- [ ] T013: Clean up leftover SKILL.md.bak.archive from openclaw plugin
