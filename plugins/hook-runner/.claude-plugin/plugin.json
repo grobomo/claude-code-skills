@@ -1,7 +1,7 @@
 {
   "name": "hook-runner",
   "description": "Modular hook runner for Claude Code. Workflows group modules into enforceable pipelines — spec gates, commit quality, destructive guards, session lifecycle. 95+ modules.",
-  "version": "2.32.0",
+  "version": "2.54.0",
   "author": {
     "name": "grobomo"
   },

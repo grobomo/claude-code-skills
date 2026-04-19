@@ -759,7 +759,7 @@ function cmdHelp() {
   console.log("  --export [file] Export installed modules as shareable YAML (default: modules-export.yaml)");
   console.log("  --perf          Analyze module timing data and identify bottlenecks");
   console.log("  --test-module   Test a single module with sample inputs");
-  console.log("  --test          Run all test suites");
+  console.log("  --test          Run all test suites (--timeout <sec>, --skip-wsl, --js-only, --sh-only)");
   console.log("  --upgrade       Fetch latest runners from GitHub and update local copies");
   console.log("  --uninstall     Remove hook-runner from settings.json and hooks dir");
   console.log("  --prune [N]     Prune log entries older than N days (default 7)");
@@ -771,6 +771,11 @@ function cmdHelp() {
   console.log("  --snapshot drift   Detect drift from last snapshot (--json for machine output)");
   console.log("  --snapshot backup  Copy files to git repo, commit, push");
   console.log("  --snapshot restore Clone repo and copy files back into place");
+  console.log("  --audit-project <name>  Audit hook activity for a specific project (blocks, gaps, timeline)");
+  console.log("                          Add --json for machine-readable output");
+  console.log("  --xref          Show inter-project TODO dashboard (audit log + pending items)");
+  console.log("  --demo          Interactive demo — see hook-runner in action (--fast to skip animation)");
+  console.log("  --demo-html     Generate standalone HTML demo page (opens in browser)");
   console.log("  --help, -h      Show this help");
   console.log("");
   console.log("Options:");
@@ -1160,14 +1165,36 @@ function cmdList() {
   console.log("[hook-runner] " + installedCount + " installed, " + catalogCount + " in catalog");
 }
 
-function cmdTest() {
+function cmdTest(args) {
+  // Parse test-specific flags
+  var timeoutIdx = args ? args.indexOf("--timeout") : -1;
+  var customTimeout = timeoutIdx !== -1 && args[timeoutIdx + 1] ? parseInt(args[timeoutIdx + 1], 10) * 1000 : 0;
+  var skipWsl = args && args.indexOf("--skip-wsl") !== -1;
+  var jsOnly = args && args.indexOf("--js-only") !== -1;
+  var shOnly = args && args.indexOf("--sh-only") !== -1;
+  var JS_TIMEOUT = customTimeout || 60000;   // 60s default for JS (some create git repos)
+  var SH_TIMEOUT = customTimeout || 60000;   // 60s default for bash
+  // Tests that call WSL — detected by grep at startup or known list
+  var WSL_TESTS = ["test-openclaw-e2e.sh"];
+
   console.log("[hook-runner] Test Suite");
   console.log("========================");
+  if (skipWsl) console.log("  (skipping WSL-dependent tests)");
+  if (jsOnly) console.log("  (JS tests only)");
+  if (shOnly) console.log("  (bash tests only)");
+  console.log("  Timeouts: JS=" + (JS_TIMEOUT / 1000) + "s, bash=" + (SH_TIMEOUT / 1000) + "s");
   var testDir = path.join(REPO_DIR, "scripts", "test");
   var testFiles;
   try {
     testFiles = fs.readdirSync(testDir).filter(function(f) {
-      return f.indexOf("test-") === 0 && (f.slice(-3) === ".sh" || f.slice(-3) === ".js");
+      if (f.indexOf("test-") !== 0) return false;
+      var isSh = f.slice(-3) === ".sh";
+      var isJs = f.slice(-3) === ".js";
+      if (!isSh && !isJs) return false;
+      if (jsOnly && !isJs) return false;
+      if (shOnly && !isSh) return false;
+      if (skipWsl && WSL_TESTS.indexOf(f) !== -1) return false;
+      return true;
     }).sort();
   } catch(e) {
     console.log("  ERROR: test directory not found: " + testDir);
@@ -1176,6 +1203,16 @@ function cmdTest() {
   if (testFiles.length === 0) {
     console.log("  No test scripts found in " + testDir);
     process.exit(1);
+  }
+  // Also detect WSL tests dynamically: scan first line for wsl/openclaw
+  if (skipWsl) {
+    testFiles = testFiles.filter(function(f) {
+      if (f.slice(-3) !== ".sh") return true;
+      try {
+        var head = fs.readFileSync(path.join(testDir, f), "utf-8").slice(0, 2000);
+        return !/\bwsl\b/i.test(head) && !/\bopenclaw\b/i.test(head);
+      } catch(e) { return true; }
+    });
   }
   // Pre-test cleanup: remove any leftover test-tmp-mod-* artifacts from previous runs
   var preCleanDirs = [path.join(REPO_DIR, "modules", "PreToolUse"), path.join(REPO_DIR, "modules", "PostToolUse")];
@@ -1192,21 +1229,32 @@ function cmdTest() {
   // Restore workflow YAML in case previous test left it dirty
   try { cp.execSync("git checkout -- workflows/no-local-docker.yml", { cwd: REPO_DIR, stdio: "pipe" }); } catch(e) {}
 
-  var totalPass = 0, totalFail = 0, suiteFail = 0, failedSuites = [];
+  var totalPass = 0, totalFail = 0, suiteFail = 0, suiteTimeout = 0;
+  var failedSuites = [], timedOutSuites = [], skippedCount = 0;
+  var startTime = Date.now();
   for (var ti = 0; ti < testFiles.length; ti++) {
     var testPath = path.join(testDir, testFiles[ti]);
     var isJs = testFiles[ti].slice(-3) === ".js";
     var suiteName = testFiles[ti].replace("test-", "").replace(/\.(sh|js)$/, "");
+    var suiteStart = Date.now();
+    // Per-file timeout: read "// TIMEOUT: N" or "# TIMEOUT: N" from first 5 lines
+    var testTimeout = isJs ? JS_TIMEOUT : SH_TIMEOUT;
+    try {
+      var head = fs.readFileSync(testPath, "utf-8").slice(0, 500);
+      var tmMatch = head.match(/(?:\/\/|#)\s*TIMEOUT:\s*(\d+)/);
+      if (tmMatch) testTimeout = parseInt(tmMatch[1], 10) * 1000;
+    } catch(e2) {}
     console.log("");
-    console.log("  [" + suiteName + "] " + testFiles[ti]);
+    console.log("  [" + suiteName + "] " + testFiles[ti] + " (timeout: " + (testTimeout / 1000) + "s)");
     try {
       var execCmd = isJs ? "node " + JSON.stringify(testPath) : "bash " + JSON.stringify(testPath);
       var result = cp.execSync(execCmd, {
         cwd: REPO_DIR,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
-        timeout: 360000
+        timeout: testTimeout
       });
+      var elapsed = ((Date.now() - suiteStart) / 1000).toFixed(1);
       var match = result.match(/(\d+) passed, (\d+) failed/);
       if (match) {
         totalPass += parseInt(match[1], 10);
@@ -1218,29 +1266,52 @@ function cmdTest() {
       for (var sl = 0; sl < summaryLines.length; sl++) {
         console.log("    " + summaryLines[sl]);
       }
+      console.log("    (" + elapsed + "s)");
     } catch(e) {
-      suiteFail++;
-      failedSuites.push(suiteName);
-      console.log("    FAIL: suite crashed (exit code " + (e.status || "unknown") + ")");
-      var errOut = (e.stdout || "") + (e.stderr || "");
-      var errLines = errOut.trim().split("\n").slice(-5);
-      for (var el = 0; el < errLines.length; el++) {
-        console.log("    " + errLines[el]);
-      }
-      var partMatch = errOut.match(/(\d+) passed, (\d+) failed/);
-      if (partMatch) {
-        totalPass += parseInt(partMatch[1], 10);
-        totalFail += parseInt(partMatch[2], 10);
+      var elapsed2 = ((Date.now() - suiteStart) / 1000).toFixed(1);
+      var isTimeout = e.killed || e.signal === "SIGTERM" || (Date.now() - suiteStart) >= testTimeout - 500;
+      if (isTimeout) {
+        // Timeout — distinct from failure
+        suiteTimeout++;
+        timedOutSuites.push(suiteName);
+        console.log("    TIMEOUT: killed after " + (testTimeout / 1000) + "s (" + elapsed2 + "s elapsed)");
+        // Still count any partial results
+        var timeoutOut = (e.stdout || "") + (e.stderr || "");
+        var timeoutMatch = timeoutOut.match(/(\d+) passed, (\d+) failed/);
+        if (timeoutMatch) {
+          totalPass += parseInt(timeoutMatch[1], 10);
+          totalFail += parseInt(timeoutMatch[2], 10);
+        }
+      } else {
+        suiteFail++;
+        failedSuites.push(suiteName);
+        console.log("    FAIL: suite crashed (exit code " + (e.status || "unknown") + ") (" + elapsed2 + "s)");
+        var errOut = (e.stdout || "") + (e.stderr || "");
+        var errLines = errOut.trim().split("\n").slice(-5);
+        for (var el = 0; el < errLines.length; el++) {
+          console.log("    " + errLines[el]);
+        }
+        var partMatch = errOut.match(/(\d+) passed, (\d+) failed/);
+        if (partMatch) {
+          totalPass += parseInt(partMatch[1], 10);
+          totalFail += parseInt(partMatch[2], 10);
+        }
       }
     }
   }
+  var totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   console.log("");
   console.log("========================");
-  console.log("[hook-runner] " + testFiles.length + " suites, " + totalPass + " passed, " + totalFail + " failed");
+  console.log("[hook-runner] " + testFiles.length + " suites, " + totalPass + " passed, " + totalFail + " failed" +
+    (suiteTimeout > 0 ? ", " + suiteTimeout + " timed out" : "") +
+    " (" + totalElapsed + "s)");
   if (suiteFail > 0) {
     console.log("[hook-runner] " + suiteFail + " suite(s) had failures: " + failedSuites.join(", "));
-    process.exit(1);
   }
+  if (suiteTimeout > 0) {
+    console.log("[hook-runner] " + suiteTimeout + " suite(s) timed out: " + timedOutSuites.join(", "));
+  }
+  if (suiteFail > 0) process.exit(1);
 }
 
 function cmdHealth() {
@@ -1499,6 +1570,328 @@ function cmdPerf() {
   console.log("");
 }
 
+// T494: Per-project hook audit — fired modules, blocks, coverage gaps, timing
+function cmdAuditProject(args) {
+  var projIdx = args.indexOf("--audit-project");
+  var projName = projIdx >= 0 && args[projIdx + 1] ? args[projIdx + 1] : "";
+  if (!projName || projName.indexOf("--") === 0) {
+    console.log("Usage: node setup.js --audit-project <name>");
+    console.log("  Filters hook log by project name (fuzzy match).");
+    console.log("  Shows: blocks, passes, coverage gaps, timeline.");
+    console.log("  Example: node setup.js --audit-project dd-lab");
+    return;
+  }
+
+  console.log("[hook-runner] Project Audit: " + projName);
+  console.log("========================");
+
+  // Read all log entries matching project name
+  var entries = [];
+  function readLogFile(logFile) {
+    if (!fs.existsSync(logFile)) return;
+    try {
+      var lines = fs.readFileSync(logFile, "utf-8").split("\n");
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        try {
+          var obj = JSON.parse(lines[i]);
+          var proj = String(obj.project || "");
+          if (proj.toLowerCase().indexOf(projName.toLowerCase()) !== -1) entries.push(obj);
+        } catch (e) {}
+      }
+    } catch (e) {}
+  }
+  readLogFile(HOOK_LOG_PATH + ".1");
+  readLogFile(HOOK_LOG_PATH);
+
+  if (entries.length === 0) {
+    console.log("  No log entries found for '" + projName + "'.");
+    console.log("  Run a session in that project to generate hook activity.");
+    return;
+  }
+
+  // Aggregate
+  var byModule = {}, byEvent = {}, blocks = [], firstTs = "", lastTs = "";
+  for (var i = 0; i < entries.length; i++) {
+    var e = entries[i];
+    var key = e.event + "/" + e.module;
+    if (!byModule[key]) byModule[key] = { pass: 0, block: 0, error: 0, total: 0, msTotal: 0, msCount: 0, msMax: 0 };
+    byModule[key].total++;
+    var r = e.result || "pass";
+    if (r === "pass" || r === "text") byModule[key].pass++;
+    else if (r === "block" || r === "deny") byModule[key].block++;
+    else if (r === "error") byModule[key].error++;
+    byEvent[e.event] = (byEvent[e.event] || 0) + 1;
+    var ts = e.ts || "";
+    if (ts && (!firstTs || ts < firstTs)) firstTs = ts;
+    if (ts && ts > lastTs) lastTs = ts;
+    if (typeof e.ms === "number") { byModule[key].msTotal += e.ms; byModule[key].msCount++; if (e.ms > byModule[key].msMax) byModule[key].msMax = e.ms; }
+    if (r === "block" || r === "deny") {
+      blocks.push({ ts: e.ts || "", module: e.module || "", event: e.event || "", tool: e.tool || "", reason: String(e.reason || "").substring(0, 120) });
+    }
+  }
+
+  // Summary
+  var totalPass = 0, totalBlock = 0;
+  var modKeys = Object.keys(byModule).sort();
+  modKeys.forEach(function(k) { totalPass += byModule[k].pass; totalBlock += byModule[k].block; });
+
+  console.log("  Entries: " + entries.length + " (" + (firstTs ? firstTs.substring(0, 10) : "?") + " to " + (lastTs ? lastTs.substring(0, 10) : "?") + ")");
+  console.log("  Pass: " + totalPass + "  Block: " + totalBlock);
+  console.log("");
+
+  // By event
+  console.log("  By event:");
+  Object.keys(byEvent).sort().forEach(function(ev) { console.log("    " + ev + ": " + byEvent[ev]); });
+  console.log("");
+
+  // Blocks detail
+  if (blocks.length > 0) {
+    console.log("  Blocks (" + blocks.length + "):");
+    blocks.forEach(function(b) {
+      console.log("    [" + (b.ts ? b.ts.substring(0, 19) : "?") + "] " + b.module + " (" + b.tool + ")");
+      if (b.reason) console.log("      " + b.reason);
+    });
+    console.log("");
+  }
+
+  // Coverage gaps — installed modules that never fired for this project
+  var firedSet = {};
+  modKeys.forEach(function(k) { firedSet[k] = true; });
+  var gaps = [];
+  var modEvents = ["PreToolUse", "PostToolUse", "SessionStart", "Stop"];
+  modEvents.forEach(function(evt) {
+    var modDir = path.join(HOOKS_DIR, "run-modules", evt);
+    if (!fs.existsSync(modDir)) return;
+    try {
+      fs.readdirSync(modDir).forEach(function(f) {
+        if (!f.endsWith(".js") || f.startsWith("_")) return;
+        var modName = evt + "/" + f.replace(".js", "");
+        if (!firedSet[modName]) gaps.push(modName);
+      });
+    } catch (e) {}
+  });
+
+  var installedCount = modEvents.reduce(function(sum, evt) {
+    var d = path.join(HOOKS_DIR, "run-modules", evt);
+    try { return sum + fs.readdirSync(d).filter(function(f) { return f.endsWith(".js") && !f.startsWith("_"); }).length; } catch(e) { return sum; }
+  }, 0);
+
+  console.log("  Module coverage:");
+  console.log("    Installed: " + installedCount + "  Fired: " + modKeys.length + "  Gaps: " + gaps.length);
+  if (gaps.length > 0 && gaps.length <= 40) {
+    var gByEvt = {};
+    gaps.forEach(function(g) { var ev = g.split("/")[0]; if (!gByEvt[ev]) gByEvt[ev] = []; gByEvt[ev].push(g.split("/").slice(1).join("/")); });
+    Object.keys(gByEvt).sort().forEach(function(ev) { console.log("    [" + ev + "] " + gByEvt[ev].join(", ")); });
+  }
+  console.log("");
+
+  // Timing top 10
+  var timed = modKeys.filter(function(k) { return byModule[k].msCount > 0; })
+    .map(function(k) { var m = byModule[k]; return { key: k, avg: Math.round(m.msTotal / m.msCount), max: m.msMax, count: m.msCount }; })
+    .sort(function(a, b) { return b.avg - a.avg; }).slice(0, 10);
+  if (timed.length > 0) {
+    console.log("  Timing (top 10 slowest):");
+    timed.forEach(function(t) {
+      var note = t.max > 100 ? "  *** spike " + t.max + "ms" : "";
+      console.log("    " + t.key + "  avg:" + t.avg + "ms  (" + t.count + " calls)" + note);
+    });
+    console.log("");
+  }
+
+  // Verdict
+  var blockRate = entries.length > 0 ? Math.round(totalBlock / entries.length * 100) : 0;
+  console.log("  Verdict:");
+  console.log("    Block rate: " + blockRate + "% (" + totalBlock + "/" + entries.length + ")");
+  if (gaps.length > installedCount * 0.5) console.log("    WARNING: >50% modules never fired — session may be too short for coverage");
+  if (blockRate > 20) console.log("    NOTE: High block rate — check workflow config for this project");
+  else if (totalBlock === 0) console.log("    OK: No blocks — hooks are passing cleanly");
+  console.log("");
+}
+
+// T494: Per-project hook audit — shows what fired, what blocked, gaps, timing
+// T500: Added --json output mode for programmatic consumption
+function cmdAuditProject(args) {
+  var idx = args.indexOf("--audit-project");
+  var projectName = (idx !== -1 && args[idx + 1]) ? args[idx + 1] : "";
+  if (!projectName || projectName.indexOf("--") === 0) {
+    console.log("Usage: node setup.js --audit-project <project-name> [--json]");
+    console.log("  Audits hook activity for a specific project from hook-log.jsonl.");
+    console.log("  Example: node setup.js --audit-project dd-lab");
+    console.log("  Example: node setup.js --audit-project dd-lab --json");
+    return;
+  }
+  var jsonMode = args.indexOf("--json") !== -1;
+
+  // Read all log entries for this project (fuzzy match on path)
+  var entries = [];
+  [HOOK_LOG_PATH + ".1", HOOK_LOG_PATH].forEach(function(logFile) {
+    if (!fs.existsSync(logFile)) return;
+    try {
+      var lines = fs.readFileSync(logFile, "utf-8").split("\n");
+      for (var i = 0; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        try {
+          var e = JSON.parse(lines[i]);
+          var proj = (e.project || "").split("\\").join("/");
+          if (proj.toLowerCase().indexOf(projectName.toLowerCase()) !== -1) entries.push(e);
+        } catch(err) {}
+      }
+    } catch(err) {}
+  });
+
+  if (entries.length === 0) {
+    if (jsonMode) { console.log(JSON.stringify({ project: projectName, error: "no_data", entries: 0 })); }
+    else {
+      console.log("[hook-runner] Project Audit: " + projectName);
+      console.log("========================\n");
+      console.log("  No log entries found for project '" + projectName + "'.");
+      console.log("  Run a Claude Code session in that project to generate hook data.");
+    }
+    return;
+  }
+
+  // Time range
+  var firstTs = entries[0].ts || "";
+  var lastTs = entries[entries.length - 1].ts || "";
+
+  // By event
+  var byEvent = {};
+  entries.forEach(function(e) {
+    var evt = e.event || "unknown";
+    if (!byEvent[evt]) byEvent[evt] = { total: 0, pass: 0, block: 0 };
+    byEvent[evt].total++;
+    if (e.result === "block" || e.result === "deny") byEvent[evt].block++;
+    else byEvent[evt].pass++;
+  });
+
+  // By module
+  var byModule = {};
+  entries.forEach(function(e) {
+    var key = (e.event || "?") + "/" + (e.module || "?");
+    if (!byModule[key]) byModule[key] = { total: 0, pass: 0, block: 0, msTotal: 0, msCount: 0, msMax: 0, blocks: [] };
+    var m = byModule[key];
+    m.total++;
+    if (e.result === "block" || e.result === "deny") {
+      m.block++;
+      if (m.blocks.length < 3) {
+        m.blocks.push({ ts: e.ts || "", tool: e.tool || "", reason: (e.reason || "").substring(0, 120) });
+      }
+    } else { m.pass++; }
+    if (typeof e.ms === "number") { m.msTotal += e.ms; m.msCount++; if (e.ms > m.msMax) m.msMax = e.ms; }
+  });
+
+  // Coverage gaps
+  var installedModules = {};
+  var modsDir = path.join(HOOKS_DIR, "run-modules");
+  ["PreToolUse", "PostToolUse", "Stop", "SessionStart", "UserPromptSubmit"].forEach(function(evt) {
+    var evDir = path.join(modsDir, evt);
+    if (!fs.existsSync(evDir)) return;
+    try {
+      fs.readdirSync(evDir).forEach(function(f) {
+        if (f.endsWith(".js") && !f.startsWith("_")) installedModules[evt + "/" + f.replace(".js", "")] = true;
+        var sub = path.join(evDir, f);
+        try {
+          if (fs.statSync(sub).isDirectory() && !f.startsWith("_") && f !== "archive") {
+            fs.readdirSync(sub).forEach(function(sf) {
+              if (sf.endsWith(".js")) installedModules[evt + "/" + f + "/" + sf.replace(".js", "")] = true;
+            });
+          }
+        } catch(err) {}
+      });
+    } catch(err) {}
+  });
+  var neverFired = Object.keys(installedModules).filter(function(k) { return !byModule[k]; });
+
+  // Timing
+  var timedMods = Object.keys(byModule).filter(function(k) { return byModule[k].msCount > 0; })
+    .map(function(k) { var m = byModule[k]; return { module: k, avgMs: Math.round(m.msTotal / m.msCount), maxMs: m.msMax, calls: m.msCount }; })
+    .sort(function(a, b) { return b.avgMs - a.avgMs; }).slice(0, 10);
+
+  // Verdict
+  var totalBlocks = entries.filter(function(e) { return e.result === "block" || e.result === "deny"; }).length;
+  var blockRate = entries.length > 0 ? Math.round(totalBlocks / entries.length * 100) : 0;
+
+  // --- JSON output ---
+  if (jsonMode) {
+    var blocksByModule = {};
+    Object.keys(byModule).forEach(function(k) {
+      var m = byModule[k];
+      if (m.block > 0) blocksByModule[k] = { count: m.block, samples: m.blocks };
+    });
+    console.log(JSON.stringify({
+      project: projectName,
+      period: { from: firstTs, to: lastTs },
+      entries: entries.length,
+      events: byEvent,
+      blocks: blocksByModule,
+      coverage: {
+        installed: Object.keys(installedModules).length,
+        fired: Object.keys(byModule).length,
+        neverFired: neverFired
+      },
+      timing: timedMods,
+      summary: { blockRate: blockRate, totalBlocks: totalBlocks }
+    }, null, 2));
+    return;
+  }
+
+  // --- Text output ---
+  console.log("[hook-runner] Project Audit: " + projectName);
+  console.log("========================\n");
+  console.log("  Period: " + (firstTs ? firstTs.slice(0, 19) : "?") + " to " + (lastTs ? lastTs.slice(0, 19) : "?"));
+  console.log("  Total entries: " + entries.length);
+
+  console.log("\n  By event:");
+  Object.keys(byEvent).sort().forEach(function(evt) {
+    var ev = byEvent[evt];
+    console.log("    " + evt + ": " + ev.total + " (" + ev.pass + " pass, " + ev.block + " block)");
+  });
+
+  var blockModules = Object.keys(byModule).filter(function(k) { return byModule[k].block > 0; });
+  if (blockModules.length > 0) {
+    console.log("\n  Blocks:");
+    blockModules.sort(function(a, b) { return byModule[b].block - byModule[a].block; }).forEach(function(k) {
+      var m = byModule[k];
+      console.log("    " + k + ": " + m.block + " block(s)");
+      m.blocks.forEach(function(b) {
+        console.log("      [" + (b.ts ? b.ts.slice(11, 19) : "?") + "] " + b.tool);
+        if (b.reason) console.log("        " + b.reason);
+      });
+    });
+  } else { console.log("\n  Blocks: none"); }
+
+  console.log("\n  Module coverage:");
+  console.log("    Installed: " + Object.keys(installedModules).length);
+  console.log("    Fired: " + Object.keys(byModule).length);
+  console.log("    Never fired: " + neverFired.length);
+  if (neverFired.length > 0 && neverFired.length <= 30) {
+    var nfByEvent = {};
+    neverFired.forEach(function(k) { var evt = k.split("/")[0]; if (!nfByEvent[evt]) nfByEvent[evt] = []; nfByEvent[evt].push(k.split("/").slice(1).join("/")); });
+    Object.keys(nfByEvent).sort().forEach(function(evt) { console.log("    [" + evt + "] " + nfByEvent[evt].join(", ")); });
+  }
+
+  if (timedMods.length > 0) {
+    console.log("\n  Timing (top 10 slowest):");
+    timedMods.forEach(function(t) {
+      var note = t.maxMs > 100 ? "  *** spike " + t.maxMs + "ms" : "";
+      console.log("    " + t.module + "  avg:" + t.avgMs + "ms  (" + t.calls + " calls)" + note);
+    });
+  }
+
+  console.log("\n  Summary:");
+  console.log("    Block rate: " + blockRate + "% (" + totalBlocks + "/" + entries.length + ")");
+  if (neverFired.length > Object.keys(installedModules).length * 0.5) {
+    console.log("    WARNING: >50% modules never fired — session may have been too short");
+  }
+  if (blockRate > 20) {
+    console.log("    NOTE: High block rate — check workflow config for this project");
+  } else if (totalBlocks === 0) {
+    console.log("    OK: No blocks — hooks are passing cleanly");
+  }
+  console.log("");
+}
+
 function cmdExport(args) {
   var outFile = null;
   for (var i = 0; i < args.length; i++) {
@@ -1698,6 +2091,91 @@ function cmdWorkflow(args) {
   return require(path.join(__dirname, "workflow-cli.js"))(args);
 }
 
+// T486: Inter-project TODO dashboard
+function cmdXref() {
+  var auditPath = path.join(os.homedir(), ".claude", "audit", "inter-project-todo.jsonl");
+  var projectsRoot = process.env.CLAUDE_PROJECTS_ROOT ||
+    (process.env.CLAUDE_PROJECT_DIR ? path.dirname(process.env.CLAUDE_PROJECT_DIR) : "") || "";
+  var XREF_PATTERN = /<!--\s*XREF:([^:]+):(\S+)\s+(\S+)\s*-->/;
+
+  console.log("[hook-runner] Inter-Project TODO Dashboard");
+  console.log("==========================================\n");
+
+  // 1. Scan audit log
+  var auditEntries = [];
+  try {
+    var auditLines = fs.readFileSync(auditPath, "utf-8").trim().split("\n");
+    for (var ai = 0; ai < auditLines.length; ai++) {
+      try { auditEntries.push(JSON.parse(auditLines[ai])); } catch(e) {}
+    }
+  } catch(e) { /* no audit log yet */ }
+
+  console.log("Audit Log: " + auditEntries.length + " inter-project writes recorded");
+  if (auditEntries.length > 0) {
+    // Show last 10
+    var recent = auditEntries.slice(-10);
+    for (var ri = 0; ri < recent.length; ri++) {
+      var e = recent[ri];
+      var age = Math.round((Date.now() - new Date(e.ts).getTime()) / 86400000);
+      console.log("  " + e.source_project + " → " + e.target_project +
+        " | " + (e.task_ids || []).join(", ") + " | " + age + "d ago" +
+        " | " + e.status);
+    }
+    if (auditEntries.length > 10) console.log("  ... and " + (auditEntries.length - 10) + " more");
+  }
+
+  // 2. Scan all projects for pending XREF items
+  console.log("\nPending XREF Items Across Projects:");
+  var totalPending = 0;
+  if (projectsRoot) {
+    try {
+      var projects = fs.readdirSync(projectsRoot);
+      for (var pi = 0; pi < projects.length; pi++) {
+        var todoFile = path.join(projectsRoot, projects[pi], "TODO.md");
+        try {
+          var content = fs.readFileSync(todoFile, "utf-8");
+          var lines = content.split("\n");
+          var projectXrefs = [];
+          for (var li = 0; li < lines.length; li++) {
+            if (!/^- \[ \] /.test(lines[li])) continue;
+            var m = lines[li].match(XREF_PATTERN);
+            if (m) projectXrefs.push({ source: m[1], taskId: m[2], date: m[3], text: lines[li] });
+          }
+          // Also check section header
+          var secIdx = content.indexOf("## Inbound Requests");
+          if (secIdx === -1) secIdx = content.indexOf("## Inter-Project Requests");
+          if (secIdx !== -1) {
+            var secLines = content.slice(secIdx).split("\n");
+            for (var si = 1; si < secLines.length; si++) {
+              if (/^## /.test(secLines[si]) && si > 0) break;
+              if (!/^- \[ \] /.test(secLines[si])) continue;
+              if (!XREF_PATTERN.test(secLines[si])) {
+                projectXrefs.push({ source: "section", taskId: "", date: "", text: secLines[si] });
+              }
+            }
+          }
+          if (projectXrefs.length > 0) {
+            console.log("\n  " + projects[pi] + " (" + projectXrefs.length + " pending):");
+            for (var xi = 0; xi < projectXrefs.length; xi++) {
+              var x = projectXrefs[xi];
+              console.log("    P0: " + x.text.replace(/^- \[ \] /, "").replace(/<!--.*?-->/, "").trim());
+              if (x.source !== "section") console.log("        from: " + x.source + " | " + x.taskId + " | " + x.date);
+            }
+            totalPending += projectXrefs.length;
+          }
+        } catch(e) { /* no TODO.md or can't read */ }
+      }
+    } catch(e) { console.log("  ERROR: Cannot read projects root: " + projectsRoot); }
+  }
+
+  if (totalPending === 0) {
+    console.log("  None — all clear!");
+  }
+
+  console.log("\n==========================================");
+  console.log("[hook-runner] " + totalPending + " P0 items pending, " + auditEntries.length + " audit entries");
+}
+
 function main() {
   var args = process.argv.slice(2);
   var dryRun = args.indexOf("--dry-run") !== -1;
@@ -1710,12 +2188,14 @@ function main() {
   if (args.indexOf("--uninstall") !== -1) return cmdUninstall(args, dryRun);
   if (args.indexOf("--prune") !== -1) return cmdPrune(args, dryRun);
   if (args.indexOf("--lessons") !== -1) return cmdLessons(args);
+  if (args.indexOf("--demo-html") !== -1) return require(path.join(__dirname, "demo.js")).runHtmlDemo();
+  if (args.indexOf("--demo") !== -1) return require(path.join(__dirname, "demo.js"))();
   if (args.indexOf("--stats") !== -1) return cmdStats();
   if (args.indexOf("--export") !== -1) return cmdExport(args);
   if (args.indexOf("--perf") !== -1) return cmdPerf();
   if (args.indexOf("--list") !== -1) return cmdList();
   if (args.indexOf("--test-module") !== -1) return cmdTestModule(args);
-  if (args.indexOf("--test") !== -1) return cmdTest();
+  if (args.indexOf("--test") !== -1) return cmdTest(args);
   if (args.indexOf("--integrity") !== -1) return cmdIntegrity(args);
   if (args.indexOf("--preflight") !== -1) {
     var pfArgs = [path.join(__dirname, "preflight.js")];
@@ -1741,6 +2221,9 @@ function main() {
     process.exit(snapResult.status || 0);
   }
   if (args.indexOf("--health") !== -1) return cmdHealth();
+  if (args.indexOf("--audit-project") !== -1) return cmdAuditProject(args);
+  if (args.indexOf("--audit-project") !== -1) return cmdAuditProject(args);
+  if (args.indexOf("--xref") !== -1) return cmdXref();
   if (args.indexOf("--sync") !== -1) return cmdSync(dryRun);
 
   // Default: setup wizard (with --report and --install as sub-modes)

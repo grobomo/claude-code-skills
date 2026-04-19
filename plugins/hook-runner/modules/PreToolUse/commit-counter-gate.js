@@ -63,34 +63,57 @@ function getGitStatus() {
 }
 
 // Get current branch name
+// T511: Check CLAUDE_PROJECT_DIR first, fall back to CWD when no .git at project dir.
 function getBranch(input) {
   if (input && input._git && input._git.branch) return input._git.branch;
-  try {
-    var projectDir = process.env.CLAUDE_PROJECT_DIR || "";
-    var gitPath = path.join(projectDir, ".git");
-    // In worktrees .git is a file pointing to the real git dir
-    var gitStat = fs.statSync(gitPath);
-    var headFile;
-    if (gitStat.isFile()) {
-      // Worktree: .git is a file like "gitdir: /path/to/.git/worktrees/name"
-      var gitdir = fs.readFileSync(gitPath, "utf-8").trim().replace(/^gitdir:\s*/, "");
-      headFile = path.join(gitdir, "HEAD");
-    } else {
-      headFile = path.join(gitPath, "HEAD");
-    }
-    var head = fs.readFileSync(headFile, "utf-8").trim();
-    if (head.indexOf("ref: refs/heads/") === 0) return head.slice(16);
-    return "";
-  } catch(e) { return ""; }
+  var projectDir = process.env.CLAUDE_PROJECT_DIR || "";
+  var dirs = projectDir ? [projectDir, process.cwd()] : [process.cwd()];
+  for (var d = 0; d < dirs.length; d++) {
+    try {
+      var gitPath = path.join(dirs[d], ".git");
+      var gitStat = fs.statSync(gitPath);
+      var headFile;
+      if (gitStat.isFile()) {
+        var gitdir = fs.readFileSync(gitPath, "utf-8").trim().replace(/^gitdir:\s*/, "");
+        headFile = path.join(gitdir, "HEAD");
+      } else {
+        headFile = path.join(gitPath, "HEAD");
+      }
+      var head = fs.readFileSync(headFile, "utf-8").trim();
+      if (head.indexOf("ref: refs/heads/") === 0) return head.slice(16);
+    } catch(e) { /* try next dir */ }
+  }
+  return "";
 }
 
 // Check if we're in a worktree (vs main checkout)
+// T511: Also check CWD when CLAUDE_PROJECT_DIR has no .git — EnterWorktree
+// changes CWD but not CLAUDE_PROJECT_DIR.
+// T532: Also check CWD when CLAUDE_PROJECT_DIR's .git is a directory (main checkout).
+// EnterWorktree changes CWD to the worktree but CLAUDE_PROJECT_DIR stays pointing at
+// the main checkout. The old code returned false immediately when .git was a dir,
+// never reaching the CWD check. Now: if CLAUDE_PROJECT_DIR is main, fall through to CWD.
 function isInWorktree() {
   var projectDir = process.env.CLAUDE_PROJECT_DIR || "";
+  // Check CLAUDE_PROJECT_DIR first
+  if (projectDir) {
+    try {
+      var gitPath = path.join(projectDir, ".git");
+      var stat = fs.statSync(gitPath);
+      if (stat.isFile()) return true; // .git file = worktree at CLAUDE_PROJECT_DIR
+      // .git is a directory (main checkout) — fall through to CWD check
+      // because EnterWorktree may have moved CWD to a worktree
+    } catch(e) { /* no .git at CLAUDE_PROJECT_DIR — fall through to CWD */ }
+  }
+
+  // Fallback: check CWD (covers worktree sessions + unset/missing CLAUDE_PROJECT_DIR)
   try {
-    var gitPath = path.join(projectDir, ".git");
-    return fs.statSync(gitPath).isFile(); // .git file = worktree, .git dir = main checkout
-  } catch(e) { return false; }
+    var cwd = process.cwd();
+    var cwdGit = path.join(cwd, ".git");
+    if (fs.statSync(cwdGit).isFile()) return true;
+  } catch(e) { /* no .git at cwd either */ }
+
+  return false;
 }
 
 // Extract meaningful keywords from a branch name
@@ -108,13 +131,31 @@ function branchKeywords(branch) {
     });
 }
 
+// T497: Metadata directories that change regardless of branch — exclude from mismatch detection.
+// Incident: .claude/ and .coconut/ files triggered "WRONG BRANCH" in worktrees because
+// these directories never match branch keywords like "audit", "deploy", etc.
+// T497: Include both dotted and undotted variants because git status --porcelain
+// prefix length varies (` M ` vs `M `), and slice(3) can clip the leading dot.
+var METADATA_DIRS = {
+  ".claude": true, "claude": true,
+  ".coconut": true, "coconut": true,
+  ".git": true, ".github": true, "github": true,
+  ".planning": true, "planning": true,
+  ".specify": true, "specify": true,
+  ".vscode": true, "vscode": true,
+  "node_modules": true, "specs": true,
+};
+
 // Extract directory segments from changed file paths (NOT filename stems —
 // filenames like deploy.sh, main.tf, config.json are too generic and cause false matches)
 // "labs/dd-lab/terraform/main.tf" → ["labs", "dd-lab", "terraform"]
+// T497: Skip entire file if top-level dir is metadata (e.g. .claude/worktrees/foo/bar.js → skip all)
 function fileKeywords(files) {
   var dirs = {};
   files.forEach(function(f) {
     var parts = f.replace(/\\/g, "/").split("/");
+    // Skip files rooted in metadata directories
+    if (parts.length > 0 && METADATA_DIRS[parts[0].toLowerCase()]) return;
     // Only directory segments, skip the filename
     for (var i = 0; i < parts.length - 1; i++) {
       var seg = parts[i].toLowerCase();
