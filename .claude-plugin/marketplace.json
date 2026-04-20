@@ -126,7 +126,7 @@
       "description": "Generate styled HTML reports of Vision One OAT detections with MITRE mapping",
       "version": "1.0.0",
       "author": {
-        "name": "Joel Ginsberg"
+        "name": "grobomo"
       },
       "tags": [
         "oat",
@@ -145,6 +145,23 @@
       "author": {
         "name": "grobomo"
       }
+    },
+    {
+      "name": "openclaw",
+      "source": "./plugins/openclaw",
+      "description": "Talk to local OpenClaw instances via HTTP API. OpenAI-compatible chat completions endpoint running in WSL.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      },
+      "tags": [
+        "openclaw",
+        "llm",
+        "chat",
+        "wsl",
+        "openai-compatible",
+        "api"
+      ]
     }
   ]
 }
