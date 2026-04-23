@@ -162,6 +162,25 @@
         "openai-compatible",
         "api"
       ]
+    },
+    {
+      "name": "openclaw-setup",
+      "source": "./plugins/openclaw-setup",
+      "category": "devops",
+      "description": "Repeatable OpenClaw deployment with guided setup, secure secret management, and CI/fleet automation.",
+      "version": "1.0.0",
+      "author": {
+        "name": "grobomo"
+      },
+      "tags": [
+        "openclaw",
+        "setup",
+        "deploy",
+        "automation",
+        "config",
+        "secrets",
+        "gateway"
+      ]
     }
   ]
 }
