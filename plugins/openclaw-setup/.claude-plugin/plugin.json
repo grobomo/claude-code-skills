@@ -1,0 +1,19 @@
+{
+  "name": "openclaw-setup",
+  "version": "1.0.0",
+  "description": "Repeatable OpenClaw deployment with guided setup, secure secret management, and CI/fleet automation.",
+  "author": {
+    "name": "grobomo"
+  },
+  "repository": "https://github.com/grobomo/openclaw-setup",
+  "license": "MIT",
+  "keywords": [
+    "openclaw",
+    "setup",
+    "deploy",
+    "automation",
+    "config",
+    "secrets",
+    "gateway"
+  ]
+}
