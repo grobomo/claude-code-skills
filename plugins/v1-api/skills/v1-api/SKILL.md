@@ -1,22 +1,6 @@
 ---
 name: v1-api
 description: Query Vision One APIs directly. Use when user asks about V1, Vision One, alerts, endpoints, threats, blocklist, or security data.
-keywords:
-  - v1
-  - vision
-  - workbench
-  - alerts
-  - oat
-  - observed
-  - attack
-  - techniques
-  - endpoints
-  - quarantine
-  - email
-  - blocklist
-  - detection
-  - network
-  - suspicious
 ---
 
 # Vision One API Skill
@@ -61,6 +45,23 @@ python executor.py list_oat days=7 limit=10
 python executor.py add_to_blocklist ioc_type=ip value=192.168.1.100
 ```
 
+## Saved Queries (Ready-to-Run Scripts)
+
+Pre-built scripts for common V1 admin tasks. Run directly or share with colleagues.
+
+| Script | Description | Usage |
+|--------|-------------|-------|
+| `spf_check.py` | SPF/DKIM/DMARC authentication report — counts failures by domain, day, sender IP. Outputs CSV. | `python saved-queries/spf_check.py --days 30` |
+
+Output CSVs are saved to `reports/`.
+
+**To add more:** Drop a Python script in `saved-queries/`. It should use `V1_API_KEY` config at top (same pattern as spf_check.py) so users just paste their key and run.
+
+### Planned saved queries:
+- `oat_report.py` — OAT detection summary by technique, severity, endpoint
+- `policy_review.py` — Best practice review of email/endpoint security policies
+- `endpoint_health.py` — Agent connectivity and version compliance report
+
 ## Folder Structure
 
 ```
@@ -70,24 +71,14 @@ v1-api/
 ├── executor.py        # Runs API calls (standalone, no deps except requests/yaml)
 ├── .env               # V1_API_KEY, V1_REGION (created by setup.py)
 ├── api_reference.md   # Find the right API by use case
-└── api_index/         # YAML configs per operation (74 operations)
-    ├── list_alerts/config.yaml
-    ├── search_endpoint_logs/config.yaml
-    └── ...
+├── api_index/         # YAML configs per operation (74 operations)
+│   ├── list_alerts/config.yaml
+│   ├── search_endpoint_logs/config.yaml
+│   └── ...
+├── saved-queries/     # Ready-to-run scripts for V1 admins
+│   └── spf_check.py  # Email auth (SPF/DKIM/DMARC) report
+└── reports/           # Output directory for CSV/JSON results
 ```
-
-## Keyword to Operation Map
-
-| User Says | Operation | Notes |
-|-----------|-----------|-------|
-| workbench, alerts, workbench alerts | `list_alerts` | Workbench = Alerts in V1 |
-| OAT, observed attack techniques, OAT detections | `list_oat` | |
-| email, quarantine, quarantined emails | `search_email_logs` | Filter by scanType or action |
-| endpoint logs, process, powershell | `search_endpoint_logs` | |
-| network logs, network detection | `search_network_logs` | |
-| blocklist, block IP, block domain | `add_to_blocklist` | |
-| suspicious object, suspicious objects | `list_suspicious_objects` | |
-| endpoints, agents, endpoint list | `list_endpoints` | |
 
 ## Common Operations
 
@@ -110,8 +101,3 @@ For full access, create an API key with:
 - Response Management (View, Filter, Run response actions)
 
 For full API list, read `api_reference.md`.
-
-## Tips
-
-- **Auto-pagination:** All list/search operations automatically follow `nextLink` and poll `progressRate` to return complete results in a single call. No need for manual page-by-page fetching.
-- **Product questions?** Use the **TrendGPT MCP** (`trendgpt`) for V1 product documentation, feature explanations, how-to guides, and best practices. v1-api is for querying live data; TrendGPT is for understanding the product.
