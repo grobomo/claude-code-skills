@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Generate styled HTML reports of Vision One OAT detections with MITRE mapping",
   "author": {
-    "name": "Joel Ginsberg"
+    "name": "grobomo"
   },
   "repository": "https://github.com/grobomo/claude-code-skills",
   "license": "MIT",
