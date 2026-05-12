@@ -74,8 +74,8 @@
     {
       "name": "mcp-manager",
       "source": "./plugins/mcp-manager",
-      "description": "Manage MCP servers - list, enable, disable, start, stop, reload. Configuration and lifecycle management.",
-      "version": "1.0.0",
+      "description": "Dynamic MCP server proxy router - manage, start, stop, and proxy all MCP servers through a single entry point with metrics and auto-recovery.",
+      "version": "2.1.0",
       "author": {
         "name": "grobomo"
       }

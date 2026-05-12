@@ -6,6 +6,6 @@
 
 <!-- See TODO-COMPLETED.md for history -->
 
-## Blocked
+## Completed This Session
 
-- [ ] T015: Sync mcp-manager to marketplace — source at broken junction (MCP/mcp-manager). Need user to identify actual source repo.
+- [x] T015: Sync mcp-manager v2.1.0 to marketplace — source found at _shared/MCP/mcp-manager (PR #23)
