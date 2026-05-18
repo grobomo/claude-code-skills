@@ -12,15 +12,12 @@ var BLOCKED_PATTERNS = [
   /\b[Cc]adence\s+notes?\b/,
   /\bsession\s+notes?\s+\d/i,
   // Employee names — never in deliverables
-  /\bjoelg?\b/i,
-  /\bjoel[\s-]?ginsberg\b/i,
+  // Add your personal name/username patterns here:
+  // /your-username/i,
   // AI tool references — customer shouldn't see these
   /\bClaude\s+(Code|session|context)\b/i,
   // Internal ticket / task references
   /\bT0\d{2}\b/,
-  // Internal repo references
-  /\bjoel-ginsberg_tmemu\b/,
-  /\bgrobomo\b/,
 ];
 
 // Allowlist: patterns that look like matches but are OK

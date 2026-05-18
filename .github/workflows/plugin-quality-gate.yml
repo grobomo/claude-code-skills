@@ -32,9 +32,8 @@ jobs:
             'C:\Users\'
             '/Users/[a-z]'
             'OneDrive -'
-            'joel-ginsberg'
-            'joeltest'
-            'joelg'
+            # Add your username patterns here
+            # 'your-github-username'
           )
 
           for pattern in "${PATTERNS[@]}"; do
